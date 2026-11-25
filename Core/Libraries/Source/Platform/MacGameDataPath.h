@@ -305,10 +305,16 @@ inline void MacConfigureBundleRuntime()
 	}
 
 	char icd[1024];
-	snprintf(icd, sizeof(icd), "%s/../Resources/MoltenVK_icd.json", exeDir.c_str());
+	snprintf(icd, sizeof(icd), "%s/../Frameworks/MoltenVK_icd.json", exeDir.c_str());
+	if (!MacFileReadable(icd)) {
+		snprintf(icd, sizeof(icd), "%s/../Resources/MoltenVK_icd.json", exeDir.c_str());
+	}
 	if (MacFileReadable(icd)) {
-		setenv("VK_ICD_FILENAMES", icd, 0);
-		setenv("VK_DRIVER_FILES", icd, 0);
+		setenv("VK_ICD_FILENAMES", icd, 1);
+		setenv("VK_DRIVER_FILES", icd, 1);
+		fprintf(stderr, "INFO: VK_ICD_FILENAMES=%s\n", icd);
+	} else {
+		fprintf(stderr, "WARNING: MoltenVK ICD manifest was not found next to the app\n");
 	}
 
 	char dxvkConf[1024];
@@ -336,6 +342,56 @@ inline void MacConfigureBundleRuntime()
 	if (MacBundleLibrary("libsage_patch.dylib", patch, sizeof(patch))) {
 		dlopen(patch, RTLD_NOW | RTLD_GLOBAL);
 	}
+}
+
+// GeneralsX @bugfix Cursor 25/11/2026 Load the same dylibs DX8Wrapper::Init dlopens,
+// before game data is required, so CI can prove the bundle is complete.
+inline bool MacProbeDxvkLibraries()
+{
+	MacConfigureBundleRuntime();
+	const char *names[] = {
+		"libdxvk_d3d8.dylib",
+		"libdxvk_d3d9.dylib",
+		"libMoltenVK.dylib",
+		"libvulkan.dylib"
+	};
+	bool ok = true;
+	for (const char *name : names) {
+		char path[1024];
+		if (!MacBundleLibrary(name, path, sizeof(path))) {
+			fprintf(stderr, "GX_PROBE_DXVK: missing %s in Contents/Frameworks\n", name);
+			ok = false;
+			continue;
+		}
+		void *handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+		if (!handle) {
+			fprintf(stderr, "GX_PROBE_DXVK: dlopen %s failed: %s\n", path, dlerror());
+			ok = false;
+			continue;
+		}
+		fprintf(stderr, "GX_PROBE_DXVK: loaded %s\n", path);
+		if (strcmp(name, "libdxvk_d3d8.dylib") == 0) {
+			void *symbol = dlsym(handle, "Direct3DCreate8");
+			if (!symbol) {
+				symbol = dlsym(handle, "_Direct3DCreate8");
+			}
+			if (!symbol) {
+				fprintf(stderr, "GX_PROBE_DXVK: Direct3DCreate8 missing: %s\n", dlerror());
+				ok = false;
+			} else {
+				fprintf(stderr, "GX_PROBE_DXVK: Direct3DCreate8=%p\n", symbol);
+			}
+		}
+	}
+	const char *icd = getenv("VK_ICD_FILENAMES");
+	if (!icd || !MacFileReadable(icd)) {
+		fprintf(stderr, "GX_PROBE_DXVK: MoltenVK ICD manifest is not readable\n");
+		ok = false;
+	} else {
+		fprintf(stderr, "GX_PROBE_DXVK: ICD %s\n", icd);
+	}
+	fflush(stderr);
+	return ok;
 }
 
 inline std::string MacWindowTitle(const char *baseTitle)

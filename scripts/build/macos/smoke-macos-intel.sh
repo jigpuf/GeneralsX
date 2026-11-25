@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-ZIP_PATH="${1:-zerohour-intel-mac-v0.1.zip}"
+ZIP_PATH="${1:-zerohour-intel-mac-v0.2.zip}"
 ROOT="$(mktemp -d)"
 HOME_DIR="${ROOT}/home"
 mkdir -p "${HOME_DIR}"
@@ -22,6 +22,32 @@ env = os.environ.copy()
 env["GX_NONINTERACTIVE"] = "1"
 env["CI"] = "true"
 env["HOME"] = home
+env["GX_PROBE_DXVK"] = "1"
+try:
+    probe = subprocess.run(
+        [binary],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+except subprocess.TimeoutExpired as exc:
+    sys.stdout.write(exc.stdout or "")
+    sys.stderr.write(exc.stderr or "")
+    print("SMOKE: DXVK dlopen probe timed out")
+    sys.exit(1)
+sys.stdout.write(probe.stdout or "")
+sys.stderr.write(probe.stderr or "")
+probe_text = (probe.stdout or "") + (probe.stderr or "")
+print(f"PROBE_EXIT={probe.returncode}")
+if probe.returncode != 0 or "GX_PROBE_DXVK: loaded" not in probe_text or "Direct3DCreate8=" not in probe_text:
+    print("SMOKE: DXVK dlopen probe failed")
+    sys.exit(1)
+if "libdxvk_d3d9.dylib" not in probe_text or "libMoltenVK.dylib" not in probe_text:
+    print("SMOKE: DXVK probe did not load d3d9 and MoltenVK")
+    sys.exit(1)
+print("SMOKE: DX8Wrapper library path loaded libdxvk_d3d8.dylib")
+env.pop("GX_PROBE_DXVK", None)
 try:
     completed = subprocess.run(
         [binary],

@@ -243,6 +243,15 @@ int main(int argc, char* argv[])
 	__argc = argc;
 	__argv = argv;
 
+#if defined(__APPLE__)
+	// GeneralsX @bugfix Cursor 25/11/2026 Prove DXVK dylibs dlopen before game data is required.
+	if (const char *dxvkProbe = getenv("GX_PROBE_DXVK")) {
+		if (dxvkProbe[0] != '\0' && strcmp(dxvkProbe, "0") != 0) {
+			return Platform::MacProbeDxvkLibraries() ? 0 : 1;
+		}
+	}
+#endif
+
 	fprintf(stderr, "=================================================\n");
 	fprintf(stderr, " Command & Conquer Generals (Linux)\n");
 	fprintf(stderr, " SDL3 + DXVK Build\n");

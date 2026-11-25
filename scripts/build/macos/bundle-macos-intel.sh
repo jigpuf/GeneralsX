@@ -17,14 +17,14 @@ case "${GAME}" in
         BINARY_SRC="${BUILD_DIR}/GeneralsMD/GeneralsXZH"
         BUNDLE_ID="com.generalsx.generalsxzh"
         ICON_SRC="${PROJECT_ROOT}/assets/generalsx-zh_icon.png"
-        OUTPUT_ZIP="${PROJECT_ROOT}/zerohour-intel-mac-v0.1.zip"
+        OUTPUT_ZIP="${PROJECT_ROOT}/zerohour-intel-mac-v0.2.zip"
         ;;
     generals|Generals)
         APP_NAME="GeneralsX"
         BINARY_SRC="${BUILD_DIR}/Generals/GeneralsX"
         BUNDLE_ID="com.generalsx.generalsx"
         ICON_SRC="${PROJECT_ROOT}/assets/generalsx_icon.png"
-        OUTPUT_ZIP="${PROJECT_ROOT}/generals-intel-mac-v0.1.zip"
+        OUTPUT_ZIP="${PROJECT_ROOT}/generals-intel-mac-v0.2.zip"
         ;;
     *)
         echo "Usage: $0 zh|generals" >&2
@@ -57,9 +57,9 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleVersion</key>
-    <string>0.1</string>
+    <string>0.2</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1</string>
+    <string>0.2</string>
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIconFile</key>
@@ -105,16 +105,19 @@ if [[ -f "${GENERALSX_BIG}" && "${APP_NAME}" == "GeneralsXZH" ]]; then
     cp "${GENERALSX_BIG}" "${RESOURCES_DIR}/generalsx.big"
 fi
 
-cat > "${RESOURCES_DIR}/MoltenVK_icd.json" <<'EOF'
+# The Vulkan loader resolves library_path relative to the JSON file.
+# A manifest beside libMoltenVK.dylib avoids a ../Frameworks hop.
+cat > "${FRAMEWORKS_DIR}/MoltenVK_icd.json" <<'EOF'
 {
     "file_format_version": "1.0.0",
     "ICD": {
-        "library_path": "../Frameworks/libMoltenVK.dylib",
+        "library_path": "libMoltenVK.dylib",
         "api_version": "1.3.0",
         "is_portability_driver": true
     }
 }
 EOF
+cp "${FRAMEWORKS_DIR}/MoltenVK_icd.json" "${RESOURCES_DIR}/MoltenVK_icd.json"
 
 is_system_dep() {
     local dep="$1"
@@ -252,6 +255,26 @@ rewrite_macho() {
         install_name_tool -add_rpath "${wanted}" "${bin}"
     fi
 }
+
+# DX8Wrapper dlopens the unversioned name. The Meson output is only the .0 file.
+stage_dlopen_alias() {
+    local versioned="$1"
+    local plain="$2"
+    if [[ ! -f "${FRAMEWORKS_DIR}/${versioned}" ]]; then
+        echo "ERROR: ${versioned} is not in Contents/Frameworks" >&2
+        echo "DXVK did not build, or the bundle scan missed it." >&2
+        exit 1
+    fi
+    cp -f "${FRAMEWORKS_DIR}/${versioned}" "${FRAMEWORKS_DIR}/${plain}"
+    chmod 755 "${FRAMEWORKS_DIR}/${plain}"
+    echo "  + ${plain} (dlopen name for ${versioned})" >&2
+}
+stage_dlopen_alias "libdxvk_d3d8.0.dylib" "libdxvk_d3d8.dylib"
+stage_dlopen_alias "libdxvk_d3d9.0.dylib" "libdxvk_d3d9.dylib"
+if [[ ! -f "${FRAMEWORKS_DIR}/libMoltenVK.dylib" || ! -f "${FRAMEWORKS_DIR}/libvulkan.dylib" ]]; then
+    echo "ERROR: libMoltenVK.dylib or libvulkan.dylib is missing from Contents/Frameworks" >&2
+    exit 1
+fi
 
 rewrite_macho "${MACOS_DIR}/${APP_NAME}"
 for library in "${FRAMEWORKS_DIR}/"*.dylib; do

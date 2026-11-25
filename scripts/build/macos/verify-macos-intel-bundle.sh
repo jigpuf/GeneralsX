@@ -28,8 +28,36 @@ with open(plist_path, "rb") as handle:
 errors = []
 if str(plist.get("LSMinimumSystemVersion")) != "12.0":
     errors.append(f"LSMinimumSystemVersion is {plist.get('LSMinimumSystemVersion')!r}, expected 12.0")
-if str(plist.get("CFBundleShortVersionString")) != "0.1":
-    errors.append(f"CFBundleShortVersionString is {plist.get('CFBundleShortVersionString')!r}, expected 0.1")
+if str(plist.get("CFBundleShortVersionString")) != "0.2":
+    errors.append(f"CFBundleShortVersionString is {plist.get('CFBundleShortVersionString')!r}, expected 0.2")
+
+frameworks = os.path.join(app, "Contents", "Frameworks")
+required_runtime = [
+    "libdxvk_d3d8.dylib",
+    "libdxvk_d3d8.0.dylib",
+    "libdxvk_d3d9.dylib",
+    "libdxvk_d3d9.0.dylib",
+    "libMoltenVK.dylib",
+    "libvulkan.dylib",
+    "MoltenVK_icd.json",
+]
+for name in required_runtime:
+    path = os.path.join(frameworks, name)
+    if not os.path.isfile(path):
+        errors.append(f"missing dlopen/runtime file Contents/Frameworks/{name}")
+    else:
+        print(f"runtime file Contents/Frameworks/{name}")
+
+icd_path = os.path.join(frameworks, "MoltenVK_icd.json")
+if os.path.isfile(icd_path):
+    import json
+    with open(icd_path, "r", encoding="utf-8") as icd_handle:
+        icd = json.load(icd_handle)
+    library_path = icd.get("ICD", {}).get("library_path", "")
+    resolved = os.path.normpath(os.path.join(os.path.dirname(icd_path), library_path))
+    print(f"MoltenVK ICD library_path={library_path} -> {resolved}")
+    if not library_path or not os.path.isfile(resolved):
+        errors.append(f"MoltenVK ICD library_path does not exist: {library_path}")
 
 def version_tuple(value):
     parts = [int(item) for item in value.split(".")]
