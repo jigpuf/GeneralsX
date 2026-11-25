@@ -119,12 +119,14 @@ build_moltenvk() {
         done < <(find . -name project.pbxproj -type f)
     }
     pin_moltenvk_x64
-    sed -i '' 's|generic/platform=${XC_DEST}|generic/platform=${XC_DEST},arch=x86_64|g' fetchDependencies
+    # generic/platform=macOS is the destination this runner accepts. "Any Mac"
+    # rejects an arch= specifier. The host is already x86_64 ("My Mac").
     ./fetchDependencies --macos
     pin_moltenvk_x64
     cat > gx-x64.xcconfig <<'EOF'
 ARCHS = x86_64
-ONLY_ACTIVE_ARCH = NO
+EXCLUDED_ARCHS = arm64
+ONLY_ACTIVE_ARCH = YES
 MACOSX_DEPLOYMENT_TARGET = 12.0
 CODE_SIGNING_ALLOWED = NO
 CODE_SIGNING_REQUIRED = NO
@@ -132,7 +134,7 @@ EOF
     xcodebuild \
         -project MoltenVKPackaging.xcodeproj \
         -scheme "MoltenVK Package (macOS only)" \
-        -destination "generic/platform=macOS,arch=x86_64" \
+        -destination "platform=macOS,name=My Mac" \
         -configuration Release \
         -xcconfig "${src}/gx-x64.xcconfig" \
         build
