@@ -108,25 +108,34 @@ build_moltenvk() {
     rm -rf "${src}"
     git clone --depth 1 --branch "${MOLTENVK_TAG}" https://github.com/KhronosGroup/MoltenVK.git "${src}"
     pushd "${src}" >/dev/null
-    # Keep fetchDependencies from also cross-compiling arm64 on the 14 GB Intel runner.
-    mkdir -p "${src}/x64-bin"
-    cat > "${src}/x64-bin/xcodebuild" <<'EOF'
-#!/bin/bash
-exec /usr/bin/xcodebuild "$@" ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES MACOSX_DEPLOYMENT_TARGET=12.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-EOF
-    chmod +x "${src}/x64-bin/xcodebuild"
-    export PATH="${src}/x64-bin:${PATH}"
+    # Xcode on the Intel runner rejects bare ARCHS= arguments ("invalid argument").
+    # Select the slice with the destination and pin minos inside the projects.
+    pin_moltenvk_x64() {
+        local project
+        while IFS= read -r project; do
+            sed -i '' \
+                -e 's/MACOSX_DEPLOYMENT_TARGET = [^;]*;/MACOSX_DEPLOYMENT_TARGET = 12.0;/g' \
+                "${project}"
+        done < <(find . -name project.pbxproj -type f)
+    }
+    pin_moltenvk_x64
+    sed -i '' 's|generic/platform=${XC_DEST}|generic/platform=${XC_DEST},arch=x86_64|g' fetchDependencies
     ./fetchDependencies --macos
-    xcodebuild build \
+    pin_moltenvk_x64
+    cat > gx-x64.xcconfig <<'EOF'
+ARCHS = x86_64
+ONLY_ACTIVE_ARCH = NO
+MACOSX_DEPLOYMENT_TARGET = 12.0
+CODE_SIGNING_ALLOWED = NO
+CODE_SIGNING_REQUIRED = NO
+EOF
+    xcodebuild \
         -project MoltenVKPackaging.xcodeproj \
         -scheme "MoltenVK Package (macOS only)" \
-        -destination "generic/platform=macOS" \
+        -destination "generic/platform=macOS,arch=x86_64" \
         -configuration Release \
-        ARCHS=x86_64 \
-        ONLY_ACTIVE_ARCH=YES \
-        MACOSX_DEPLOYMENT_TARGET=12.0 \
-        CODE_SIGNING_ALLOWED=NO \
-        CODE_SIGNING_REQUIRED=NO
+        -xcconfig "${src}/gx-x64.xcconfig" \
+        build
     local built
     built="$(find . -name 'libMoltenVK.dylib' -type f | head -n 1)"
     if [[ -z "${built}" ]]; then
