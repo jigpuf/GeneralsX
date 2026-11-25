@@ -118,6 +118,8 @@ build_ffmpeg() {
         --enable-parser=bink \
         --enable-protocol=file \
         --enable-pthreads \
+        --disable-xlib \
+        --disable-libxcb \
         --extra-cflags="-arch x86_64 -mmacosx-version-min=12.0" \
         --extra-ldflags="-arch x86_64 -mmacosx-version-min=12.0"
     make -j"$(sysctl -n hw.ncpu)"

@@ -52,7 +52,9 @@ if(SAGE_USE_SDL3)
         set(SDL_VIDEO ON CACHE BOOL "Enable video subsystem" FORCE)
         
         # Platform support
-        if(EMSCRIPTEN)
+        if(EMSCRIPTEN OR APPLE)
+            # GeneralsX @build Cursor 25/11/2026 macOS uses Cocoa. Homebrew X11 is minos 14
+            # and must not be linked into a macOS 12 bundle.
             set(SDL_WAYLAND OFF CACHE BOOL "Disable Wayland" FORCE)
             set(SDL_X11 OFF CACHE BOOL "Disable X11" FORCE)
         else()
