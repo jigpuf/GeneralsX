@@ -293,6 +293,38 @@
             "description": "macOS port with OpenAL audio backend (legacy)."
         },
         {
+            "name": "macos-vulkan-x64",
+            "displayName": "macOS (MoltenVK + SDL3 + MiniAudio) Intel x86_64 macOS 12",
+            "inherits": "default-vcpkg",
+            "generator": "Ninja",
+            "hidden": false,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+                "VCPKG_TARGET_TRIPLET": "x64-osx",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+                "SAGE_USE_DX8": "OFF",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "OFF",
+                "SAGE_USE_MINIAUDIO": "ON",
+                "SAGE_USE_GLM": "ON",
+                "SAGE_USE_MOLTENVK": "ON",
+                "SAGE_UPDATE_CHECK": "ON",
+                "SAGE_ALLOW_HOST_BREW_DYLIBS": "OFF",
+                "RTS_CRASHDUMP_ENABLE": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "ON",
+                "RTS_BUILD_OPTION_SAGE_PATCH": "ON",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "GENERALSX_APP_VERSION": "v0.1"
+            },
+            "description": "Unsigned Intel (x86_64) macOS build for macOS 12 Monterey. MiniAudio is compiled into the binary. OpenAL stays available through FetchContent when SAGE_USE_OPENAL=ON."
+        },
+        {
             "name": "linux64-miniaudio",
             "displayName": "Linux 64-bit DXVK/SDL3/MiniAudio Release",
             "inherits": "linux64-deploy",

@@ -1,0 +1,156 @@
+name: Build macOS Intel
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - intel-monterey
+  workflow_dispatch:
+
+concurrency:
+  group: macos-intel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-intel-app:
+    name: Intel macOS 12 bundle
+    runs-on: macos-15-intel
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install host tools
+        run: |
+          set -euo pipefail
+          # Host tools only. Game libraries are built from source for x86_64 / minos 12.0
+          # because Homebrew bottles on this runner advertise the host OS.
+          brew install cmake ninja meson pkg-config ccache nasm glslang
+          cmake --version | head -n 1
+          clang --version | head -n 1
+          xcodebuild -version | head -n 2
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'ffc071e0c08432c60c9b64f00334c0227667931b'
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-bincache
+          key: vcpkg-bincache-macos-15-intel-x64-12-${{ hashFiles('vcpkg.json', 'cmake/triplets/x64-osx.cmake', 'cmake/ports/**') }}
+
+      - name: Configure vcpkg cache directory
+        run: |
+          cacheDir="${{ github.workspace }}/vcpkg-bincache"
+          mkdir -p "$cacheDir"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$cacheDir" >> "$GITHUB_ENV"
+          echo "VCPKG_BINARY_SOURCES=clear;files,$cacheDir,readwrite" >> "$GITHUB_ENV"
+
+      - name: Restore built macOS 12 dependencies
+        id: dep_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/gx-prefix
+          key: gx-prefix-macos12-x64-${{ hashFiles('scripts/build/macos/build-macos-intel-deps.sh') }}
+
+      - name: Build x86_64 dependencies (minos 12.0)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/build/macos/build-macos-intel-deps.sh \
+            scripts/build/macos/bundle-macos-intel.sh \
+            scripts/build/macos/verify-macos-intel-bundle.sh \
+            scripts/build/macos/smoke-macos-intel.sh
+          ./scripts/build/macos/build-macos-intel-deps.sh
+          echo "VULKAN_SDK=$HOME/gx-prefix" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$HOME/gx-prefix/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Save built macOS 12 dependencies
+        if: steps.dep_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/gx-prefix
+          key: gx-prefix-macos12-x64-${{ hashFiles('scripts/build/macos/build-macos-intel-deps.sh') }}
+
+      - name: Configure CMake
+        env:
+          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+          VCPKG_DEFAULT_TRIPLET: x64-osx
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+          CC: clang
+          CXX: clang++
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          cmake --preset macos-vulkan-x64 2>&1 | tee logs/configure_macos_intel.log
+
+      - name: Save vcpkg binary cache
+        if: steps.vcpkg_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-bincache
+          key: vcpkg-bincache-macos-15-intel-x64-12-${{ hashFiles('vcpkg.json', 'cmake/triplets/x64-osx.cmake', 'cmake/ports/**') }}
+
+      - name: Build Zero Hour and Generals
+        run: |
+          set -euo pipefail
+          jobs="$(sysctl -n hw.ncpu)"
+          cmake --build build/macos-vulkan-x64 --target z_generals g_generals -j "${jobs}" \
+            2>&1 | tee logs/build_macos_intel.log
+
+      - name: Bundle apps
+        run: |
+          set -euo pipefail
+          ./scripts/build/macos/bundle-macos-intel.sh zh 2>&1 | tee logs/bundle_zh_intel.log
+          ./scripts/build/macos/bundle-macos-intel.sh generals 2>&1 | tee logs/bundle_generals_intel.log
+
+      - name: Verify bundle architecture and deployment target
+        run: |
+          set -euo pipefail
+          ./scripts/build/macos/verify-macos-intel-bundle.sh zerohour-intel-mac-v0.1.zip \
+            2>&1 | tee logs/verify_zh_intel.log
+          ./scripts/build/macos/verify-macos-intel-bundle.sh generals-intel-mac-v0.1.zip \
+            2>&1 | tee logs/verify_generals_intel.log
+
+      - name: Smoke test data-missing launch
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          ./scripts/build/macos/smoke-macos-intel.sh zerohour-intel-mac-v0.1.zip \
+            2>&1 | tee logs/smoke_zh_intel.log
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-logs-macos-intel
+          path: logs/
+          retention-days: 14
+
+      - name: Upload Zero Hour app
+        uses: actions/upload-artifact@v7
+        with:
+          name: zerohour-intel-mac-v0.1.zip
+          path: zerohour-intel-mac-v0.1.zip
+          archive: false
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Generals app
+        uses: actions/upload-artifact@v7
+        with:
+          name: generals-intel-mac-v0.1.zip
+          path: generals-intel-mac-v0.1.zip
+          archive: false
+          retention-days: 14
+          if-no-files-found: error

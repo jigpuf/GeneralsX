@@ -78,6 +78,11 @@ if(SAGE_USE_SDL3)
             find_library(PNG_LIBRARY NAMES png16 png NO_CMAKE_PATH NO_CMAKE_FIND_ROOT_PATH)
             find_path(PNG_PNG_INCLUDE_DIR png.h PATH_SUFFIXES libpng16 NO_CMAKE_PATH NO_CMAKE_FIND_ROOT_PATH)
             find_package(PNG REQUIRED MODULE)
+        elseif(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "13.0")
+            # GeneralsX @build Cursor 25/11/2026 Homebrew bottles on the macOS 15 Intel runner
+            # advertise minos 15. Vendor SDL_image codecs so the app does not link them.
+            message(STATUS "SDL3_image: vendored codecs (deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET})")
+            set(GX_SDLIMAGE_VENDORED ON)
         else()
             # macOS: Force Homebrew's dynamic libpng, bypassing vcpkg's static .a
             # GeneralsX @build BenderAI 24/02/2026 - Phase 5 macOS port
@@ -126,7 +131,16 @@ if(SAGE_USE_SDL3)
         # Configure SDL3_image build options
         # Note: PNG will use system libpng-dev (installed in Docker, no vcpkg conflicts)
         set(SDLIMAGE_INSTALL OFF CACHE BOOL "Install SDL3_image" FORCE)
-        if(EMSCRIPTEN)
+        if(GX_SDLIMAGE_VENDORED)
+            set(SDLIMAGE_VENDORED ON CACHE BOOL "Vendor image codecs" FORCE)
+            set(SDLIMAGE_DEPS_SHARED OFF CACHE BOOL "Static vendored image codecs" FORCE)
+            set(SDLIMAGE_JPG ON CACHE BOOL "Enable JPG support" FORCE)
+            set(SDLIMAGE_PNG ON CACHE BOOL "Enable PNG support (ANI cursor loading)" FORCE)
+            set(SDLIMAGE_TIF OFF CACHE BOOL "Disable TIFF" FORCE)
+            set(SDLIMAGE_WEBP OFF CACHE BOOL "Disable WebP" FORCE)
+            set(SDLIMAGE_AVIF OFF CACHE BOOL "Disable AVIF (optional)" FORCE)
+            set(SDLIMAGE_XCUR OFF CACHE BOOL "Disable X cursor" FORCE)
+        elseif(EMSCRIPTEN)
             set(SDLIMAGE_DEPS_SHARED OFF CACHE BOOL "Use static image dependencies" FORCE)
             set(SDLIMAGE_JPG OFF CACHE BOOL "Disable JPG" FORCE)
             set(SDLIMAGE_PNG OFF CACHE BOOL "Disable PNG" FORCE)
@@ -156,6 +170,25 @@ if(SAGE_USE_SDL3)
             "${sdl3_image_SOURCE_DIR}/include"
         )
         
+        if(APPLE)
+            # GeneralsX @build Cursor 25/11/2026 DXVK's Meson build finds SDL3 through pkg-config.
+            # Point it at this FetchContent build instead of a Homebrew SDL3 with a newer minos.
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/gx-pkgconfig")
+            file(WRITE "${CMAKE_BINARY_DIR}/gx-pkgconfig/sdl3.pc"
+"prefix=${SDL3_BINARY_DIR}
+exec_prefix=\${prefix}
+libdir=\${prefix}
+includedir=${SDL3_SOURCE_DIR}/include
+
+Name: sdl3
+Description: SDL3
+Version: ${SDL3_VERSION}
+Libs: -L\${libdir} -lSDL3
+Cflags: -I\${includedir}
+")
+            set(ENV{PKG_CONFIG_PATH} "${CMAKE_BINARY_DIR}/gx-pkgconfig:$ENV{PKG_CONFIG_PATH}")
+        endif()
+
         message(STATUS "✓ SDL3 (${SDL3_VERSION}) + SDL3_image (${SDL3_IMAGE_VERSION}) configured")
         message(STATUS "  Build approach: Native FetchContent compilation")
         message(STATUS "  PNG support: System libpng-dev (dynamic linking)")
