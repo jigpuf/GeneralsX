@@ -56,6 +56,34 @@ require_x64() {
     echo "  minos $(otool -l "${target}" | awk '$1 == "minos" { print $2; exit }')"
 }
 
+build_libpng() {
+    if [[ -f "${PREFIX}/lib/libpng16.dylib" ]] && minos_ok "${PREFIX}/lib/libpng16.dylib" 2>/dev/null; then
+        echo "libpng already built in ${PREFIX}"
+        return 0
+    fi
+    echo "Building libpng 1.6.44 for x86_64 / macOS 12..."
+    curl -L --retry 3 --max-time 120 -o "${SRC_ROOT}/libpng.tar.gz" \
+        "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.44.tar.gz"
+    tar -xzf "${SRC_ROOT}/libpng.tar.gz" -C "${SRC_ROOT}"
+    local src
+    src="$(find "${SRC_ROOT}" -maxdepth 1 -type d -name 'libpng-*' | head -n 1)"
+    if [[ -z "${src}" ]]; then
+        echo "ERROR: libpng source directory was not extracted"
+        exit 1
+    fi
+    cmake -S "${src}" -B "${src}/build" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+        -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+        -DPNG_SHARED=ON \
+        -DPNG_STATIC=OFF \
+        -DPNG_TESTS=OFF \
+        -DPNG_TOOLS=OFF
+    cmake --build "${src}/build" --target install
+    rm -rf "${src}" "${SRC_ROOT}/libpng.tar.gz"
+}
+
 build_ffmpeg() {
     if [[ -f "${PREFIX}/lib/pkgconfig/libavcodec.pc" ]] && minos_ok "${PREFIX}/lib/libavcodec.dylib" 2>/dev/null; then
         echo "FFmpeg already built in ${PREFIX}"
@@ -194,6 +222,7 @@ build_vulkan_loader() {
     rm -rf "${src}"
 }
 
+build_libpng
 build_ffmpeg
 build_moltenvk
 build_vulkan_loader
