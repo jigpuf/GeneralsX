@@ -182,6 +182,15 @@ EOF
         mkdir -p "${PREFIX}/include/vulkan"
         cp -R External/Vulkan-Headers/include/vulkan/. "${PREFIX}/include/vulkan/"
     fi
+    # CMake FindVulkan requires MoltenVK/mvk_vulkan.h in addition to the dylib.
+    local moltenvk_header
+    moltenvk_header="$(find . -path '*/MoltenVK/mvk_vulkan.h' -type f | head -n 1)"
+    if [[ -z "${moltenvk_header}" ]]; then
+        echo "ERROR: MoltenVK headers were not produced"
+        exit 1
+    fi
+    mkdir -p "${PREFIX}/include/MoltenVK"
+    cp -R "$(dirname "${moltenvk_header}")/." "${PREFIX}/include/MoltenVK/"
     popd >/dev/null
     rm -rf "${src}" "${HOME}/Library/Developer/Xcode/DerivedData"
 }
