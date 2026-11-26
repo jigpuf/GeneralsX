@@ -18,6 +18,7 @@
 
 // 08/05/02 KM Texture class redesign
 #include "missingtexture.h"
+#include <cstdio>
 #include "texture.h"
 #include "dx8wrapper.h"
 
@@ -69,7 +70,12 @@ IDirect3DSurface8* MissingTexture::_Create_Missing_Surface()
 	}
 
 	IDirect3DSurface8 *texture_surface = nullptr;
-	DX8_ErrorCode(_MissingTexture->GetSurfaceLevel(0, &texture_surface));
+	const HRESULT level_result = _MissingTexture->GetSurfaceLevel(0, &texture_surface);
+	if (FAILED(level_result) || texture_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] MissingTexture GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(level_result));
+		fflush(stderr);
+		return nullptr;
+	}
 	D3DSURFACE_DESC texture_surface_desc;
 	::ZeroMemory(&texture_surface_desc, sizeof(D3DSURFACE_DESC));
 	DX8_ErrorCode(texture_surface->GetDesc(&texture_surface_desc));

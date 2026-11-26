@@ -115,6 +115,9 @@ MetalMapManagerClass::MetalMapManagerClass(INIClass &ini) :
 
 	WW3D::Get_Device_Resolution(w,h,bits,windowed);
 	Use16Bit=(bits<=16);
+#if defined(__APPLE__)
+	Use16Bit = false;
+#endif
 
 	WW3DFormat format=(Use16Bit?WW3D_FORMAT_A4R4G4B4:WW3D_FORMAT_A8R8G8B8);
 

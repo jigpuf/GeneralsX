@@ -28,8 +28,8 @@ with open(plist_path, "rb") as handle:
 errors = []
 if str(plist.get("LSMinimumSystemVersion")) != "12.0":
     errors.append(f"LSMinimumSystemVersion is {plist.get('LSMinimumSystemVersion')!r}, expected 12.0")
-if str(plist.get("CFBundleShortVersionString")) != "0.3":
-    errors.append(f"CFBundleShortVersionString is {plist.get('CFBundleShortVersionString')!r}, expected 0.3")
+if str(plist.get("CFBundleShortVersionString")) != "0.4":
+    errors.append(f"CFBundleShortVersionString is {plist.get('CFBundleShortVersionString')!r}, expected 0.4")
 
 frameworks = os.path.join(app, "Contents", "Frameworks")
 required_runtime = [

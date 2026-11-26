@@ -158,6 +158,14 @@ SurfaceClass::SurfaceClass(unsigned width, unsigned height, WW3DFormat format):
 	WWASSERT(width);
 	WWASSERT(height);
 	D3DSurface = DX8Wrapper::_Create_DX8_Surface(width, height, format);
+	if (D3DSurface == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass %ux%u format %d create failed\n", width, height, static_cast<int>(format));
+		fflush(stderr);
+		return;
+	}
+	SurfaceDescription desc;
+	Get_Description(desc);
+	SurfaceFormat = desc.Format;
 }
 
 SurfaceClass::SurfaceClass(const char *filename):

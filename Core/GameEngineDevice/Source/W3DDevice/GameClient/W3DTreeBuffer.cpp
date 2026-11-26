@@ -56,6 +56,7 @@ enum
 //-----------------------------------------------------------------------------
 
 #include "W3DDevice/GameClient/W3DTreeBuffer.h"
+#include <cstdio>
 
 #include <WW3D2/assetmgr.h>
 #include <WW3D2/texture.h>
@@ -134,13 +135,30 @@ int W3DTreeBuffer::W3DTreeTextureClass::update(W3DTreeBuffer *buffer)
 	Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
 	Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
 
-	IDirect3DSurface8 *surface_level;
+	IDirect3DTexture8 *tree_texture = Peek_D3D_Texture();
+	if (tree_texture == nullptr) {
+		fprintf(stderr, "[GeneralsX] W3DTreeTextureClass::update: D3D texture is null\n");
+		fflush(stderr);
+		return 0;
+	}
+	IDirect3DSurface8 *surface_level = nullptr;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0, &surface_level));
-	DX8_ErrorCode(surface_level->GetDesc(&surface_desc));
-
-	DX8_ErrorCode(surface_level->LockRect(&locked_rect, nullptr, 0));
+	const HRESULT level_result = tree_texture->GetSurfaceLevel(0, &surface_level);
+	if (FAILED(level_result) || surface_level == nullptr) {
+		fprintf(stderr, "[GeneralsX] W3DTreeTextureClass::update GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(level_result));
+		fflush(stderr);
+		return 0;
+	}
+	const HRESULT desc_result = surface_level->GetDesc(&surface_desc);
+	const HRESULT lock_result = surface_level->LockRect(&locked_rect, nullptr, 0);
+	if (FAILED(desc_result) || FAILED(lock_result) || locked_rect.pBits == nullptr) {
+		fprintf(stderr, "[GeneralsX] W3DTreeTextureClass::update lock failed hresult=0x%08X format=%u\n",
+			static_cast<unsigned>(FAILED(lock_result) ? lock_result : desc_result), static_cast<unsigned>(surface_desc.Format));
+		fflush(stderr);
+		surface_level->Release();
+		return 0;
+	}
 
 	Int tilePixelExtent = TILE_PIXEL_EXTENT;
 //	Int numRows = surface_desc.Height/(tilePixelExtent+TILE_OFFSET);

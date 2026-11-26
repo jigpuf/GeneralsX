@@ -37,6 +37,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "textureloader.h"
+#include <cstdio>
 #include "WWLib/mutex.h"
 #include "WWLib/thread.h"
 #include "WWDebug/wwdebug.h"
@@ -266,10 +267,22 @@ IDirect3DTexture8* Load_Compressed_Texture(
 		(MipCountType)mips
 	);
 
+	if (d3d_texture == nullptr) {
+		fprintf(stderr, "[GeneralsX] Load_Compressed_Texture failed for %s format %d\n", filename.str(), static_cast<int>(dest_format));
+		fflush(stderr);
+		return nullptr;
+	}
+
 	for (unsigned level=0;level<mips;++level) {
 		IDirect3DSurface8* d3d_surface=nullptr;
-		WWASSERT(d3d_texture);
-		DX8_ErrorCode(d3d_texture->GetSurfaceLevel(level/*-reduction_factor*/,&d3d_surface));
+		const HRESULT level_result = d3d_texture->GetSurfaceLevel(level/*-reduction_factor*/,&d3d_surface);
+		if (FAILED(level_result) || d3d_surface == nullptr) {
+			fprintf(stderr, "[GeneralsX] Load_Compressed_Texture GetSurfaceLevel failed hresult=0x%08X level=%u\n",
+				static_cast<unsigned>(level_result), level);
+			fflush(stderr);
+			d3d_texture->Release();
+			return nullptr;
+		}
 		dds_file.Copy_Level_To_Surface(level,d3d_surface);
 		d3d_surface->Release();
 	}

@@ -121,7 +121,7 @@ public:
 
 	int Get_Extra_Overlap() {return PixelOverlap;}
 
-	void	Blit_Char( WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, int y );
+	void	Blit_Char( WCHAR ch, void *dest_ptr, int dest_stride, int x, int y, int dest_bytes_per_pixel = 2 );
 	// GeneralsX @feature felipebraz 27/09/2026 Test if font contains a valid glyph mapping
 	bool	Has_Glyph( WCHAR ch ) const;
 
@@ -321,8 +321,9 @@ private:
 	bool												ParseHotKey;
 	bool												useHardWordWrap;
 
-	uint16 *										LockedPtr;
+	void *											LockedPtr;
 	int													LockedStride;
+	int													LockedBytesPerPixel;
 	TextureClass *							CurTexture;
 	ShaderClass									Shader;
 };

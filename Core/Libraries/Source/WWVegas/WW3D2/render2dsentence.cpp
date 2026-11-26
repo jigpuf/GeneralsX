@@ -33,6 +33,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "render2dsentence.h"
+#include <cstdio>
 #include "surfaceclass.h"
 #include "texture.h"
 #include "WWDebug/wwprofile.h"
@@ -65,6 +66,7 @@ Render2DSentenceClass::Render2DSentenceClass () :
 	BaseLocation (0, 0),
 	LockedPtr (nullptr),
 	LockedStride (0),
+	LockedBytesPerPixel (2),
 	TextureSizeHint (0),
 	WrapWidth (0),
 	Centered (false),
@@ -942,9 +944,15 @@ void	Render2DSentenceClass::Build_Sentence_Centered (const WCHAR *text, int *hkX
 				//
 				//	Ensure the surface is locked
 				//
-				if (LockedPtr == nullptr) {
-					LockedPtr = (uint16 *)CurSurface->Lock (&LockedStride);
-					WWASSERT (LockedPtr != nullptr);
+				if (LockedPtr == nullptr && CurSurface != nullptr) {
+					SurfaceClass::SurfaceDescription font_desc;
+					CurSurface->Get_Description(font_desc);
+					LockedBytesPerPixel = (font_desc.Format == WW3D_FORMAT_A8R8G8B8 || font_desc.Format == WW3D_FORMAT_X8R8G8B8) ? 4 : 2;
+					LockedPtr = CurSurface->Lock (&LockedStride);
+					if (LockedPtr == nullptr) {
+						fprintf(stderr, "[GeneralsX] font surface lock failed format %d\n", static_cast<int>(font_desc.Format));
+						fflush(stderr);
+					}
 				}
 
 				//
@@ -957,8 +965,8 @@ void	Render2DSentenceClass::Build_Sentence_Centered (const WCHAR *text, int *hkX
 				//	Blit the character to the surface
 				//	TheSuperHackers @fix Skip a glyph that still does not fit.
 				//
-				if(!dontBlit && fits_texture)
-					Font->Blit_Char (ch, LockedPtr, LockedStride, TextureOffset.I, TextureOffset.J);
+				if(!dontBlit && fits_texture && LockedPtr != nullptr)
+					Font->Blit_Char (ch, LockedPtr, LockedStride, TextureOffset.I, TextureOffset.J, LockedBytesPerPixel);
 
 				if (dontBlit) {
 					// we don't blit for a hot key character.  So add extra spacing.
@@ -1139,9 +1147,15 @@ Vector2	Render2DSentenceClass::Build_Sentence_Not_Centered (const WCHAR *text, i
 			//
 			if (!justCalcExtents)
 			{
-				if (LockedPtr == nullptr) {
-					LockedPtr = (uint16 *)CurSurface->Lock (&LockedStride);
-					WWASSERT (LockedPtr != nullptr);
+				if (LockedPtr == nullptr && CurSurface != nullptr) {
+					SurfaceClass::SurfaceDescription font_desc;
+					CurSurface->Get_Description(font_desc);
+					LockedBytesPerPixel = (font_desc.Format == WW3D_FORMAT_A8R8G8B8 || font_desc.Format == WW3D_FORMAT_X8R8G8B8) ? 4 : 2;
+					LockedPtr = CurSurface->Lock (&LockedStride);
+					if (LockedPtr == nullptr) {
+						fprintf(stderr, "[GeneralsX] font surface lock failed format %d\n", static_cast<int>(font_desc.Format));
+						fflush(stderr);
+					}
 				}
 			}
 
@@ -1155,9 +1169,9 @@ Vector2	Render2DSentenceClass::Build_Sentence_Not_Centered (const WCHAR *text, i
 			//	Blit the character to the surface
 			//	TheSuperHackers @fix Skip a glyph that still does not fit.
 			//
-			if (!justCalcExtents && !dontBlit && fits_texture)
+			if (!justCalcExtents && !dontBlit && fits_texture && LockedPtr != nullptr)
 			{
-				Font->Blit_Char (ch, LockedPtr, LockedStride, TextureOffset.I, TextureOffset.J);
+				Font->Blit_Char (ch, LockedPtr, LockedStride, TextureOffset.I, TextureOffset.J, LockedBytesPerPixel);
 			}
 			TextureOffset.I += char_spacing;
 		}
@@ -1425,17 +1439,21 @@ FontCharsClass::Get_Char_Spacing (WCHAR ch)
 //
 ////////////////////////////////////////////////////////////////////////////////////
 void
-FontCharsClass::Blit_Char (WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, int y)
+FontCharsClass::Blit_Char (WCHAR ch, void *dest_ptr, int dest_stride, int x, int y, int dest_bytes_per_pixel)
 {
 	const uint16 normalized_char = static_cast<uint16>(ch);
 	const WCHAR glyph = static_cast<WCHAR>(normalized_char);
 
+	if (dest_ptr == nullptr || dest_bytes_per_pixel <= 0) {
+		return;
+	}
+
 	if ( normalized_char >= 0xE000 && normalized_char <= 0xF8FF && AlternateBrandFont && this != AlternateBrandFont ) {
-		AlternateBrandFont->Blit_Char( glyph, dest_ptr, dest_stride, x, y );
+		AlternateBrandFont->Blit_Char( glyph, dest_ptr, dest_stride, x, y, dest_bytes_per_pixel );
 		return;
 	}
 	if ( normalized_char >= 256 && AlternateUnicodeFont && this != AlternateUnicodeFont ) {
-		AlternateUnicodeFont->Blit_Char( glyph, dest_ptr, dest_stride, x, y );
+		AlternateUnicodeFont->Blit_Char( glyph, dest_ptr, dest_stride, x, y, dest_bytes_per_pixel );
 		return;
 	}
 
@@ -1445,9 +1463,9 @@ FontCharsClass::Blit_Char (WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, i
 		//
 		//	Setup the src and destination pointers
 		//
-		int dest_inc		= (dest_stride >> 1);
 		const uint8 *src_ptr = data->Buffer;
-		dest_ptr				+= (dest_inc * y) + x;
+		unsigned char *dest_bytes = static_cast<unsigned char *>(dest_ptr);
+		dest_bytes += (dest_stride * y) + (x * dest_bytes_per_pixel);
 
 		//
 		//	TheSuperHackers @bugfix The glyph holds as many rows as the font that stored it, which is the
@@ -1466,22 +1484,40 @@ FontCharsClass::Blit_Char (WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, i
 		for ( row = 0; row < glyph_rows; row ++ ) {
 			for ( int col = 0; col < data->Width; col ++ ) {
 				const uint8 coverage = *src_ptr;
-				uint16 curData = (coverage != 0 ? 0x0FFF : 0) | ((uint16)(coverage >> 4) << 12);
-				if (col<PixelOverlap) {
-					curData |= dest_ptr[col];
+				if (dest_bytes_per_pixel == 4) {
+					unsigned char *pixel = dest_bytes + col * 4;
+					const unsigned char alpha = coverage;
+					unsigned char blue = coverage != 0 ? 255 : 0;
+					unsigned char green = blue;
+					unsigned char red = blue;
+					if (col < PixelOverlap) {
+						blue |= pixel[0];
+						green |= pixel[1];
+						red |= pixel[2];
+					}
+					pixel[0] = blue;
+					pixel[1] = green;
+					pixel[2] = red;
+					pixel[3] = alpha;
+				} else {
+					uint16 *dest_pixels = reinterpret_cast<uint16 *>(dest_bytes);
+					uint16 curData = (coverage != 0 ? 0x0FFF : 0) | ((uint16)(coverage >> 4) << 12);
+					if (col<PixelOverlap) {
+						curData |= dest_pixels[col];
+					}
+					dest_pixels[col] = curData;
 				}
-				dest_ptr[col] = curData;
 				src_ptr++;
 			}
-			dest_ptr	+= dest_inc;
+			dest_bytes += dest_stride;
 		}
 
 		//
 		//	The remaining rows are empty.
 		//
 		for ( ; row < CharHeight; row ++ ) {
-			::memset( dest_ptr, 0, data->Width * sizeof( uint16 ) );
-			dest_ptr	+= dest_inc;
+			::memset( dest_bytes, 0, data->Width * dest_bytes_per_pixel );
+			dest_bytes += dest_stride;
 		}
 	}
 }

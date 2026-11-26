@@ -244,7 +244,14 @@ bool DX8Wrapper::Pillarbox_Setup(int gameW, int gameH)
 	HRESULT hr = D3DDevice->CreateTexture(gameW, gameH, 1, D3DUSAGE_RENDERTARGET,
 		D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &s_offscreenTex);
 	if (FAILED(hr)) return false;
-	s_offscreenTex->GetSurfaceLevel(0, &s_offscreenSurf);
+	hr = s_offscreenTex->GetSurfaceLevel(0, &s_offscreenSurf);
+	if (FAILED(hr) || s_offscreenSurf == nullptr) {
+		fprintf(stderr, "[GeneralsX] offscreen GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(hr));
+		fflush(stderr);
+		s_offscreenTex->Release();
+		s_offscreenTex = nullptr;
+		return false;
+	}
 
 	// Create dedicated depth stencil at game resolution
 	hr = D3DDevice->CreateDepthStencilSurface(gameW, gameH,
@@ -2837,6 +2844,66 @@ void DX8Wrapper::Apply_Render_State_Changes()
 	SNAPSHOT_SAY(("DX8Wrapper::Apply_Render_State_Changes() - finished"));
 }
 
+static void Log_Texture_Format_Result(const char *what, WW3DFormat requested, WW3DFormat used, unsigned result, bool failed)
+{
+	StringClass requested_name(0, true);
+	StringClass used_name(0, true);
+	Get_WW3D_Format_Name(requested, requested_name);
+	Get_WW3D_Format_Name(used, used_name);
+	if (failed) {
+		fprintf(stderr, "[GeneralsX] %s FAILED hresult=0x%08X requested=%s d3dfmt=%u used=%s\n",
+			what, result, requested_name.str(), static_cast<unsigned>(WW3DFormat_To_D3DFormat(requested)), used_name.str());
+		fflush(stderr);
+		return;
+	}
+	if (requested != used) {
+		static int substitutions_logged = 0;
+		if (substitutions_logged < 12) {
+			++substitutions_logged;
+			fprintf(stderr, "[GeneralsX] %s using %s instead of %s\n", what, used_name.str(), requested_name.str());
+			fflush(stderr);
+		}
+	}
+}
+
+static unsigned Create_Texture_With_Fallback
+(
+	IDirect3DDevice8 *device,
+	unsigned int width,
+	unsigned int height,
+	unsigned int mip_level_count,
+	unsigned int usage,
+	WW3DFormat format,
+	D3DPOOL pool,
+	IDirect3DTexture8 **texture
+)
+{
+	const WW3DFormat requested = format;
+	format = Promote_Unsupported_Texture_Format(format);
+	*texture = nullptr;
+	unsigned result = D3DXCreateTexture(device, width, height, mip_level_count, usage, WW3DFormat_To_D3DFormat(format), pool, texture);
+	if ((!SUCCEEDED(result) || *texture == nullptr) && format != WW3D_FORMAT_A8R8G8B8) {
+		Log_Texture_Format_Result("CreateTexture", requested, format, result, true);
+		if (*texture != nullptr) {
+			(*texture)->Release();
+			*texture = nullptr;
+		}
+		format = WW3D_FORMAT_A8R8G8B8;
+		result = D3DXCreateTexture(device, width, height, mip_level_count, usage, WW3DFormat_To_D3DFormat(format), pool, texture);
+	}
+	if ((!SUCCEEDED(result) || *texture == nullptr) && format != WW3D_FORMAT_X8R8G8B8) {
+		Log_Texture_Format_Result("CreateTexture", requested, format, result, true);
+		if (*texture != nullptr) {
+			(*texture)->Release();
+			*texture = nullptr;
+		}
+		format = WW3D_FORMAT_X8R8G8B8;
+		result = D3DXCreateTexture(device, width, height, mip_level_count, usage, WW3DFormat_To_D3DFormat(format), pool, texture);
+	}
+	Log_Texture_Format_Result("CreateTexture", requested, format, result, !SUCCEEDED(result) || *texture == nullptr);
+	return result;
+}
+
 IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 (
 	unsigned int width,
@@ -2867,15 +2934,8 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	// Render target may return NOTAVAILABLE, in
 	// which case we return null.
 	if (rendertarget) {
-		unsigned ret=D3DXCreateTexture(
-			d3d_device,
-			width,
-			height,
-			mip_level_count,
-			D3DUSAGE_RENDERTARGET,
-			WW3DFormat_To_D3DFormat(format),
-			pool,
-			&texture);
+		unsigned ret = Create_Texture_With_Fallback(
+			d3d_device, width, height, mip_level_count, D3DUSAGE_RENDERTARGET, format, pool, &texture);
 
 		if (ret==D3DERR_NOTAVAILABLE) {
 			Non_Fatal_Log_DX8_ErrorCode(ret,__FILE__,__LINE__);
@@ -2885,28 +2945,14 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 		// If ran out of texture ram, try invalidating some textures and mesh cache.
 		if (ret==D3DERR_OUTOFVIDEOMEMORY) {
 			WWDEBUG_SAY(("Error: Out of memory while creating render target. Trying to release assets..."));
-			// Free all textures that haven't been used in the last 5 seconds
 			TextureClass::Invalidate_Old_Unused_Textures(5000);
-
-			// Invalidate the mesh cache
 			WW3D::_Invalidate_Mesh_Cache();
-
-			ret=D3DXCreateTexture(
-				d3d_device,
-				width,
-				height,
-				mip_level_count,
-				D3DUSAGE_RENDERTARGET,
-				WW3DFormat_To_D3DFormat(format),
-				pool,
-				&texture);
-
-			if (SUCCEEDED(ret)) {
-				WWDEBUG_SAY(("...Render target creation successful."));
+			if (texture != nullptr) {
+				texture->Release();
+				texture = nullptr;
 			}
-			else {
-				WWDEBUG_SAY(("...Render target creation failed."));
-			}
+			ret = Create_Texture_With_Fallback(
+				d3d_device, width, height, mip_level_count, D3DUSAGE_RENDERTARGET, format, pool, &texture);
 			if (ret==D3DERR_OUTOFVIDEOMEMORY) {
 				Non_Fatal_Log_DX8_ErrorCode(ret,__FILE__,__LINE__);
 				return nullptr;
@@ -2914,67 +2960,27 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 		}
 
 		DX8_ErrorCode(ret);
-		// Just return the texture, no reduction
-		// allowed for render targets.
 		return texture;
 	}
 
 	// We should never run out of video memory when allocating a non-rendertarget texture.
 	// However, it seems to happen sometimes when there are a lot of textures in memory and so
 	// if it happens we'll release assets and try again (anything is better than crashing).
-	unsigned ret=D3DXCreateTexture(
-		d3d_device,
-		width,
-		height,
-		mip_level_count,
-		0,
-		WW3DFormat_To_D3DFormat(format),
-		pool,
-		&texture);
+	unsigned ret = Create_Texture_With_Fallback(
+		d3d_device, width, height, mip_level_count, 0, format, pool, &texture);
 
-	// If ran out of texture ram, try invalidating some textures and mesh cache.
 	if (ret==D3DERR_OUTOFVIDEOMEMORY) {
 		WWDEBUG_SAY(("Error: Out of memory while creating texture. Trying to release assets..."));
-		// Free all textures that haven't been used in the last 5 seconds
 		TextureClass::Invalidate_Old_Unused_Textures(5000);
-
-		// Invalidate the mesh cache
 		WW3D::_Invalidate_Mesh_Cache();
-
-		ret=D3DXCreateTexture(
-			d3d_device,
-			width,
-			height,
-			mip_level_count,
-			0,
-			WW3DFormat_To_D3DFormat(format),
-			pool,
-			&texture);
-		if (SUCCEEDED(ret)) {
-			WWDEBUG_SAY(("...Texture creation successful."));
+		if (texture != nullptr) {
+			texture->Release();
+			texture = nullptr;
 		}
-		else {
-			StringClass format_name(0,true);
-			Get_WW3D_Format_Name(format, format_name);
-			WWDEBUG_SAY(("...Texture creation failed. (%d x %d, format: %s, mips: %d",width,height,format_name.str(),mip_level_count));
-		}
-
+		ret = Create_Texture_With_Fallback(
+			d3d_device, width, height, mip_level_count, 0, format, pool, &texture);
 	}
 	DX8_ErrorCode(ret);
-
-	// GeneralsX @bugfix felipebraz 10/06/2025 On non-Windows builds DX8_ErrorCode is a silent no-op
-	// in non-debug builds (WWASSERT expands to nothing). Log failures to stderr so crashes can be
-	// diagnosed without a debugger attached.
-#if !defined(_WIN32)
-	if (!SUCCEEDED(ret) || texture == nullptr) {
-		StringClass format_name(0, true);
-		Get_WW3D_Format_Name(static_cast<WW3DFormat>(format), format_name);
-		fprintf(stderr, "[GeneralsX] _Create_DX8_Texture FAILED: hresult=0x%08X d3dfmt=%u %dx%d fmt=%s mips=%d pool=%d rendertarget=%d texture=%p\n",
-			ret, static_cast<unsigned>(WW3DFormat_To_D3DFormat(format)), (int)width, (int)height,
-			format_name.str(), (int)mip_level_count, (int)pool, (int)rendertarget, static_cast<void*>(texture));
-		fflush(stderr);
-	}
-#endif
 
 	return texture;
 }
@@ -3364,12 +3370,36 @@ IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(unsigned int width, unsigned
 	DX8_Assert();
 
 	IDirect3DSurface8 *surface = nullptr;
+	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
+	if (device == nullptr) {
+		return nullptr;
+	}
 
-	// Paletted surfaces not supported!
-	WWASSERT(format!=D3DFMT_P8);
-
-	DX8CALL(CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface));
-
+	const WW3DFormat requested = format;
+	format = Promote_Unsupported_Texture_Format(format);
+	HRESULT result = device->CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface);
+	DX8Wrapper::Increment_DX8_CallCount();
+	if ((FAILED(result) || surface == nullptr) && format != WW3D_FORMAT_A8R8G8B8) {
+		Log_Texture_Format_Result("CreateImageSurface", requested, format, static_cast<unsigned>(result), true);
+		if (surface != nullptr) {
+			surface->Release();
+			surface = nullptr;
+		}
+		format = WW3D_FORMAT_A8R8G8B8;
+		result = device->CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface);
+		DX8Wrapper::Increment_DX8_CallCount();
+	}
+	if ((FAILED(result) || surface == nullptr) && format != WW3D_FORMAT_X8R8G8B8) {
+		Log_Texture_Format_Result("CreateImageSurface", requested, format, static_cast<unsigned>(result), true);
+		if (surface != nullptr) {
+			surface->Release();
+			surface = nullptr;
+		}
+		format = WW3D_FORMAT_X8R8G8B8;
+		result = device->CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface);
+		DX8Wrapper::Increment_DX8_CallCount();
+	}
+	Log_Texture_Format_Result("CreateImageSurface", requested, format, static_cast<unsigned>(result), FAILED(result) || surface == nullptr);
 	return surface;
 }
 

@@ -320,7 +320,7 @@
                 "RTS_BUILD_CORE_TOOLS": "OFF",
                 "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
                 "RTS_BUILD_GENERALS_TOOLS": "OFF",
-                "GENERALSX_APP_VERSION": "v0.3"
+                "GENERALSX_APP_VERSION": "v0.4"
             },
             "description": "Unsigned Intel (x86_64) macOS build for macOS 12 Monterey. MiniAudio is compiled into the binary. OpenAL stays available through FetchContent when SAGE_USE_OPENAL=ON."
         },
