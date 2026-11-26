@@ -107,6 +107,8 @@ jobs:
           jobs="$(sysctl -n hw.ncpu)"
           cmake --build build/macos-vulkan-x64 --target z_generals g_generals -j "${jobs}" \
             2>&1 | tee logs/build_macos_intel.log
+          grep -q "GeneralsX monterey vertex stride" \
+            build/macos-vulkan-x64/_deps/dxvk-src-generalsx/src/dxvk/dxvk_context.cpp
 
       - name: Bundle apps
         run: |
@@ -117,16 +119,16 @@ jobs:
       - name: Verify bundle architecture and deployment target
         run: |
           set -euo pipefail
-          ./scripts/build/macos/verify-macos-intel-bundle.sh zerohour-intel-mac-v0.4.zip \
+          ./scripts/build/macos/verify-macos-intel-bundle.sh zerohour-intel-mac-v0.5.zip \
             2>&1 | tee logs/verify_zh_intel.log
-          ./scripts/build/macos/verify-macos-intel-bundle.sh generals-intel-mac-v0.4.zip \
+          ./scripts/build/macos/verify-macos-intel-bundle.sh generals-intel-mac-v0.5.zip \
             2>&1 | tee logs/verify_generals_intel.log
 
       - name: Smoke test data-missing launch
         run: |
           set -euo pipefail
           mkdir -p logs
-          ./scripts/build/macos/smoke-macos-intel.sh zerohour-intel-mac-v0.4.zip \
+          ./scripts/build/macos/smoke-macos-intel.sh zerohour-intel-mac-v0.5.zip \
             2>&1 | tee logs/smoke_zh_intel.log
 
       - name: Upload build logs
@@ -140,8 +142,8 @@ jobs:
       - name: Upload Zero Hour app
         uses: actions/upload-artifact@v7
         with:
-          name: zerohour-intel-mac-v0.4.zip
-          path: zerohour-intel-mac-v0.4.zip
+          name: zerohour-intel-mac-v0.5.zip
+          path: zerohour-intel-mac-v0.5.zip
           archive: false
           retention-days: 14
           if-no-files-found: error
@@ -149,8 +151,8 @@ jobs:
       - name: Upload Generals app
         uses: actions/upload-artifact@v7
         with:
-          name: generals-intel-mac-v0.4.zip
-          path: generals-intel-mac-v0.4.zip
+          name: generals-intel-mac-v0.5.zip
+          path: generals-intel-mac-v0.5.zip
           archive: false
           retention-days: 14
           if-no-files-found: error

@@ -138,6 +138,21 @@ build_moltenvk() {
     rm -rf "${src}"
     git clone --depth 1 --branch "${MOLTENVK_TAG}" https://github.com/KhronosGroup/MoltenVK.git "${src}"
     pushd "${src}" >/dev/null
+    # VERTEX_INPUT_BINDING_STRIDE needs macOS 14 and Apple4/Mac2. MoltenVK 1.3
+    # still advertises extendedDynamicState on macOS 12, and DXVK then fails
+    # every pipeline. The other macOS 13/14 gates in MVKDevice.mm already hide
+    # their features; vertexInputDynamicState is not advertised in this tag.
+    python3 - <<'PY'
+from pathlib import Path
+path = Path("MoltenVK/MoltenVK/GPUObjects/MVKDevice.mm")
+text = path.read_text()
+old = "extDynState->extendedDynamicState = true;"
+new = "extDynState->extendedDynamicState = _metalFeatures.dynamicVertexStride;"
+if old not in text and new not in text:
+    raise SystemExit("MoltenVK extendedDynamicState assignment was not found")
+path.write_text(text.replace(old, new, 1))
+print("MoltenVK extendedDynamicState follows dynamicVertexStride")
+PY
     # Xcode on the Intel runner rejects bare ARCHS= arguments ("invalid argument").
     # Select the slice with the destination and pin minos inside the projects.
     pin_moltenvk_x64() {

@@ -298,6 +298,11 @@ inline void MacExportAssetEnv(bool zeroHour, const std::string &zhPath, const st
 inline void MacConfigureBundleRuntime()
 {
 	setenv("DXVK_WSI_DRIVER", "SDL3", 0);
+	// GeneralsX @bugfix Cursor 26/11/2026 D3DRS_PATCHSEGMENTS is logged once per draw as a warning.
+	// Keep pipeline compile errors. A launch can still override this.
+	if (getenv("DXVK_LOG_LEVEL") == nullptr) {
+		setenv("DXVK_LOG_LEVEL", "error", 0);
+	}
 
 	const std::string exeDir = MacExecutableDir();
 	if (exeDir.empty()) {

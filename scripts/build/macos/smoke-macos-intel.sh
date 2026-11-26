@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-ZIP_PATH="${1:-zerohour-intel-mac-v0.4.zip}"
+ZIP_PATH="${1:-zerohour-intel-mac-v0.5.zip}"
 ROOT="$(mktemp -d)"
 HOME_DIR="${ROOT}/home"
 mkdir -p "${HOME_DIR}"
