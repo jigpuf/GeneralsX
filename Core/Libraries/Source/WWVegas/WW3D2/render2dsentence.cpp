@@ -356,6 +356,11 @@ Render2DSentenceClass::Build_Textures ()
 		//
 		TextureClass *new_texture = W3DNEW TextureClass (desc.Width, desc.Width, WW3D_FORMAT_A4R4G4B4, MIP_LEVELS_1);
 		SurfaceClass *texture_surface = new_texture->Get_Surface_Level ();
+		if (texture_surface == nullptr || texture_surface->Peek_D3D_Surface() == nullptr || curr_surface->Peek_D3D_Surface() == nullptr) {
+			REF_PTR_RELEASE(texture_surface);
+			REF_PTR_RELEASE(new_texture);
+			continue;
+		}
 
 		new_texture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
 		new_texture->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);

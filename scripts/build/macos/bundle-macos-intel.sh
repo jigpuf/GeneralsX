@@ -17,14 +17,14 @@ case "${GAME}" in
         BINARY_SRC="${BUILD_DIR}/GeneralsMD/GeneralsXZH"
         BUNDLE_ID="com.generalsx.generalsxzh"
         ICON_SRC="${PROJECT_ROOT}/assets/generalsx-zh_icon.png"
-        OUTPUT_ZIP="${PROJECT_ROOT}/zerohour-intel-mac-v0.2.zip"
+        OUTPUT_ZIP="${PROJECT_ROOT}/zerohour-intel-mac-v0.3.zip"
         ;;
     generals|Generals)
         APP_NAME="GeneralsX"
         BINARY_SRC="${BUILD_DIR}/Generals/GeneralsX"
         BUNDLE_ID="com.generalsx.generalsx"
         ICON_SRC="${PROJECT_ROOT}/assets/generalsx_icon.png"
-        OUTPUT_ZIP="${PROJECT_ROOT}/generals-intel-mac-v0.2.zip"
+        OUTPUT_ZIP="${PROJECT_ROOT}/generals-intel-mac-v0.3.zip"
         ;;
     *)
         echo "Usage: $0 zh|generals" >&2
@@ -57,9 +57,9 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleVersion</key>
-    <string>0.2</string>
+    <string>0.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2</string>
+    <string>0.3</string>
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIconFile</key>

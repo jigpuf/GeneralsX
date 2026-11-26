@@ -36,6 +36,7 @@
 
 // GeneralsX @build fbraz 11/02/2026 BenderAI - Linux portability: uintptr_t for 64-bit safe pointer arithmetic
 #include <stdint.h>
+#include <cstdio>
 
 #include "surfaceclass.h"
 #include "formconv.h"
@@ -169,8 +170,15 @@ SurfaceClass::SurfaceClass(const char *filename):
 }
 
 SurfaceClass::SurfaceClass(IDirect3DSurface8 *d3d_surface)	:
-	D3DSurface (nullptr)
+	D3DSurface (nullptr),
+	SurfaceFormat(WW3D_FORMAT_UNKNOWN)
 {
+	// GeneralsX @bugfix Cursor 26/11/2026 A failed GetSurfaceLevel must not lock a null surface.
+	if (d3d_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass constructed with a null D3D surface\n");
+		fflush(stderr);
+		return;
+	}
 	Attach (d3d_surface);
 	SurfaceDescription desc;
 	Get_Description(desc);
@@ -189,6 +197,12 @@ void SurfaceClass::Get_Description(SurfaceDescription &surface_desc)
 {
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
+	if (D3DSurface == nullptr) {
+		surface_desc.Format = SurfaceFormat;
+		surface_desc.Height = 0;
+		surface_desc.Width = 0;
+		return;
+	}
 	DX8_ErrorCode(D3DSurface->GetDesc(&d3d_desc));
 	surface_desc.Format = D3DFormat_To_WW3DFormat(d3d_desc.Format);
 	surface_desc.Height = d3d_desc.Height;
@@ -206,8 +220,24 @@ SurfaceClass::LockedSurfacePtr SurfaceClass::Lock(int *pitch)
 {
 	D3DLOCKED_RECT lock_rect;
 	::ZeroMemory(&lock_rect, sizeof(D3DLOCKED_RECT));
-	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect, nullptr, 0));
-	*pitch = lock_rect.Pitch;
+	if (pitch != nullptr) {
+		*pitch = 0;
+	}
+	// GeneralsX @bugfix Cursor 26/11/2026 Null surface used to segfault at D3DSurface+0x10.
+	if (D3DSurface == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass::Lock skipped: D3D surface is null\n");
+		fflush(stderr);
+		return nullptr;
+	}
+	const HRESULT result = D3DSurface->LockRect(&lock_rect, nullptr, 0);
+	if (FAILED(result) || lock_rect.pBits == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass::Lock LockRect failed hresult=0x%08X\n", static_cast<unsigned>(result));
+		fflush(stderr);
+		return nullptr;
+	}
+	if (pitch != nullptr) {
+		*pitch = lock_rect.Pitch;
+	}
 	return static_cast<LockedSurfacePtr>(lock_rect.pBits);
 }
 
@@ -221,19 +251,40 @@ SurfaceClass::LockedSurfacePtr SurfaceClass::Lock(int *pitch, const Vector2i &mi
 	rect.top = min.J;
 	rect.right = max.I;
 	rect.bottom = max.J;
-	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect, &rect, 0));
+	if (pitch != nullptr) {
+		*pitch = 0;
+	}
+	if (D3DSurface == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass::Lock(rect) skipped: D3D surface is null\n");
+		fflush(stderr);
+		return nullptr;
+	}
+	const HRESULT result = D3DSurface->LockRect(&lock_rect, &rect, 0);
+	if (FAILED(result) || lock_rect.pBits == nullptr) {
+		fprintf(stderr, "[GeneralsX] SurfaceClass::Lock(rect) LockRect failed hresult=0x%08X\n", static_cast<unsigned>(result));
+		fflush(stderr);
+		return nullptr;
+	}
 
-	*pitch = lock_rect.Pitch;
+	if (pitch != nullptr) {
+		*pitch = lock_rect.Pitch;
+	}
 	return static_cast<LockedSurfacePtr>(lock_rect.pBits);
 }
 
 void SurfaceClass::Unlock()
 {
+	if (D3DSurface == nullptr) {
+		return;
+	}
 	DX8_ErrorCode(D3DSurface->UnlockRect());
 }
 
 void SurfaceClass::Clear()
 {
+	if (D3DSurface == nullptr) {
+		return;
+	}
 	SurfaceDescription sd;
 	Get_Description(sd);
 

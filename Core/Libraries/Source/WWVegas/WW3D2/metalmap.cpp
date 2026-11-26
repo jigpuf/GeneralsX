@@ -219,8 +219,15 @@ void MetalMapManagerClass::Update_Textures()
 		Vector3 white(1.0f, 1.0f, 1.0f);
 
 		SurfaceClass * metal_map_surface = Textures[i]->Get_Surface_Level(0);
-		int pitch;
+		if (metal_map_surface == nullptr) {
+			continue;
+		}
+		int pitch = 0;
 		unsigned char *map=(unsigned char *) metal_map_surface->Lock(&pitch);
+		if (map == nullptr) {
+			REF_PTR_RELEASE(metal_map_surface);
+			continue;
+		}
 		int idx=0;
 		for (int y = 0; y < METALMAP_SIZE; y++) {
 			for (int x = 0; x < METALMAP_SIZE; x++) {

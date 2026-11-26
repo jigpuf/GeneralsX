@@ -48,6 +48,9 @@
 #endif
 
 #include "dx8wrapper.h"
+#if defined(__APPLE__)
+#include <strings.h>
+#endif
 #if defined(SAGE_USE_WEBGPU)
 #include "WebGPUDevice/WebGPUD3D8.h"
 #endif
@@ -1021,11 +1024,21 @@ bool DX8Wrapper::Create_Device()
 
 			if (FAILED(hr))
 			{
+				fprintf(stderr, "[GeneralsX] CreateDevice failed hresult=0x%08X adapter=%d backbuffer=%u depth=%u\n",
+					static_cast<unsigned>(hr), CurRenderDevice,
+					static_cast<unsigned>(_PresentParameters.BackBufferFormat),
+					static_cast<unsigned>(_PresentParameters.AutoDepthStencilFormat));
+				fflush(stderr);
 				return false;
 			}
         }
 		else
 		{
+				fprintf(stderr, "[GeneralsX] CreateDevice failed hresult=0x%08X adapter=%d backbuffer=%u depth=%u\n",
+					static_cast<unsigned>(hr), CurRenderDevice,
+					static_cast<unsigned>(_PresentParameters.BackBufferFormat),
+					static_cast<unsigned>(_PresentParameters.AutoDepthStencilFormat));
+				fflush(stderr);
 				return false;
 		}
 	}
@@ -1035,6 +1048,12 @@ bool DX8Wrapper::Create_Device()
 	/*
 	** Initialize all subsystems
 	*/
+	// GeneralsX @bugfix Cursor 26/11/2026 Log the adapter DXVK actually created the device on.
+	fprintf(stderr, "[GeneralsX] D3D device created on adapter %d: %s (driver %s)\n",
+		CurRenderDevice,
+		CurrentAdapterIdentifier.Description,
+		CurrentAdapterIdentifier.Driver);
+	fflush(stderr);
 	Do_Onetime_Device_Dependent_Inits();
 	return true;
 }
@@ -1409,6 +1428,28 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 	*/
 	if ((CurRenderDevice == -1) && (dev == -1)) {
 		CurRenderDevice = 0;
+#if defined(__APPLE__)
+		// GeneralsX @bugfix Cursor 26/11/2026 Dual-GPU Macs enumerate Intel first.
+		// Prefer a discrete Radeon/NVIDIA adapter when one is present.
+		int discrete = -1;
+		for (int adapter = 0; adapter < _RenderDeviceNameTable.Count(); ++adapter) {
+			const char *adapterName = _RenderDeviceNameTable[adapter].str();
+			fprintf(stderr, "[GeneralsX] D3D adapter %d: %s\n", adapter, adapterName != nullptr ? adapterName : "");
+			if (discrete < 0 && adapterName != nullptr &&
+				(strcasestr(adapterName, "Radeon") != nullptr ||
+				 strcasestr(adapterName, "AMD") != nullptr ||
+				 strcasestr(adapterName, "NVIDIA") != nullptr ||
+				 strcasestr(adapterName, "GeForce") != nullptr)) {
+				discrete = adapter;
+			}
+		}
+		if (discrete > 0) {
+			fprintf(stderr, "[GeneralsX] preferring discrete adapter %d (%s) over adapter 0. Override with DXVK_FILTER_DEVICE_NAME.\n",
+				discrete, _RenderDeviceNameTable[discrete].str());
+			CurRenderDevice = discrete;
+		}
+		fflush(stderr);
+#endif
 	} else if (dev != -1) {
 		CurRenderDevice = dev;
 	}
@@ -2925,11 +2966,13 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	// in non-debug builds (WWASSERT expands to nothing). Log failures to stderr so crashes can be
 	// diagnosed without a debugger attached.
 #if !defined(_WIN32)
-	if (!SUCCEEDED(ret)) {
+	if (!SUCCEEDED(ret) || texture == nullptr) {
 		StringClass format_name(0, true);
 		Get_WW3D_Format_Name(static_cast<WW3DFormat>(format), format_name);
-		fprintf(stderr, "[GeneralsX] _Create_DX8_Texture FAILED: hresult=0x%08X %dx%d fmt=%s mips=%d pool=%d rendertarget=%d\n",
-			ret, (int)width, (int)height, format_name.str(), (int)mip_level_count, (int)pool, (int)rendertarget);
+		fprintf(stderr, "[GeneralsX] _Create_DX8_Texture FAILED: hresult=0x%08X d3dfmt=%u %dx%d fmt=%s mips=%d pool=%d rendertarget=%d texture=%p\n",
+			ret, static_cast<unsigned>(WW3DFormat_To_D3DFormat(format)), (int)width, (int)height,
+			format_name.str(), (int)mip_level_count, (int)pool, (int)rendertarget, static_cast<void*>(texture));
+		fflush(stderr);
 	}
 #endif
 

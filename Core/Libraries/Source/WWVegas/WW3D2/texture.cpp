@@ -37,6 +37,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "texture.h"
+#include <cstdio>
 
 #include <d3d8.h>
 #include <d3dx8core.h>
@@ -981,12 +982,22 @@ SurfaceClass *TextureClass::Get_Surface_Level(unsigned int level) const
 {
 	if (!Peek_D3D_Texture())
 	{
+		// GeneralsX @bugfix Cursor 26/11/2026 Texture creation can fail on DXVK/MoltenVK.
+		fprintf(stderr, "[GeneralsX] Get_Surface_Level: D3D texture is null (level %u, format %d)\n",
+			level, static_cast<int>(TextureFormat));
+		fflush(stderr);
 		WWASSERT_PRINT(0, "Get_Surface_Level: D3DTexture is null!");
 		return nullptr;
 	}
 
 	IDirect3DSurface8 *d3d_surface = nullptr;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
+	const HRESULT result = Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface);
+	if (FAILED(result) || d3d_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] GetSurfaceLevel failed hresult=0x%08X level=%u format=%d\n",
+			static_cast<unsigned>(result), level, static_cast<int>(TextureFormat));
+		fflush(stderr);
+		return nullptr;
+	}
 	SurfaceClass *surface = new SurfaceClass(d3d_surface);
 	d3d_surface->Release();
 
