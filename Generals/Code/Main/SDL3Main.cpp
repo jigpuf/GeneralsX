@@ -48,6 +48,9 @@
 #include "Common/Debug.h"
 #include "Common/version.h"  // GeneralsX @bugfix BenderAI 14/02/2026 Version class + TheVersion extern
 #include "SDL3GameEngine.h"
+#if defined(__APPLE__)
+#include "MacGameDataPath.h"
+#endif
 
 // DXVK WSI
 #define DXVK_WSI_SDL3 1
@@ -240,6 +243,15 @@ int main(int argc, char* argv[])
 	__argc = argc;
 	__argv = argv;
 
+#if defined(__APPLE__)
+	// GeneralsX @bugfix Cursor 25/11/2026 Prove DXVK dylibs dlopen before game data is required.
+	if (const char *dxvkProbe = getenv("GX_PROBE_DXVK")) {
+		if (dxvkProbe[0] != '\0' && strcmp(dxvkProbe, "0") != 0) {
+			return Platform::MacProbeDxvkLibraries() ? 0 : 1;
+		}
+	}
+#endif
+
 	fprintf(stderr, "=================================================\n");
 	fprintf(stderr, " Command & Conquer Generals (Linux)\n");
 	fprintf(stderr, " SDL3 + DXVK Build\n");
@@ -259,6 +271,14 @@ int main(int argc, char* argv[])
 		// GameEngine::init() calls updateWindowTitle() which uses TheVersion
 		// Must be created before GameMain() to avoid nullptr dereference
 		TheVersion = NEW Version;
+
+#if defined(__APPLE__)
+		// GeneralsX @feature Cursor 25/11/2026 Resolve game data before any GPU init.
+		Platform::MacConfigureBundleRuntime();
+		if (!Platform::MacEnsureGameData(false)) {
+			return 0;
+		}
+#endif
 
 		// Parse command line (CommandLine class handles argc/argv internally)
 		// TheSuperHackers @build felipebraz 10/02/2026 Phase 1.5
@@ -293,7 +313,17 @@ int main(int argc, char* argv[])
 
 			// Load Vulkan library for DXVK DirectX8→Vulkan translation
 			fprintf(stderr, "INFO: Loading Vulkan library...\n");
+#if defined(__APPLE__)
+			char bundledVulkan[1024] = {0};
+			const char *vulkanLibrary = nullptr;
+			if (Platform::MacBundleLibrary("libvulkan.dylib", bundledVulkan, sizeof(bundledVulkan))) {
+				vulkanLibrary = bundledVulkan;
+				fprintf(stderr, "INFO: Using bundled Vulkan loader %s\n", vulkanLibrary);
+			}
+			if (!SDL_Vulkan_LoadLibrary(vulkanLibrary)) {
+#else
 			if (!SDL_Vulkan_LoadLibrary(nullptr)) {
+#endif
 				fprintf(stderr, "WARNING: Failed to load Vulkan: %s\n", SDL_GetError());
 				fprintf(stderr, "WARNING: Continuing without Vulkan (may use software rendering)\n");
 			}
@@ -308,8 +338,14 @@ int main(int argc, char* argv[])
 			// (SDL_GetWindowSizeInPixels), and the density-aware pillarbox/mouse mapping in DX8Wrapper.
 			windowFlags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
+#ifdef GENERALSX_APP_VERSION
+			// GeneralsX @feature Cursor 25/11/2026 Keep the Intel app version visible in the title.
+			const char *windowTitle = "Command & Conquer Generals " GENERALSX_APP_VERSION;
+#else
+			const char *windowTitle = "Command & Conquer Generals";
+#endif
 			TheSDL3Window = SDL_CreateWindow(
-				"Command & Conquer Generals",
+				windowTitle,
 				1024, 768,  // Default resolution
 				windowFlags
 			);

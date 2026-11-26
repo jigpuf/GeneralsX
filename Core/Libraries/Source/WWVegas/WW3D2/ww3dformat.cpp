@@ -300,10 +300,37 @@ void Get_WW3D_Format(WW3DFormat& src_format,unsigned& src_bpp,const Targa& targa
 //
 // ----------------------------------------------------------------------------
 
+WW3DFormat Promote_Unsupported_Texture_Format(WW3DFormat format)
+{
+#if defined(__APPLE__)
+	switch (format) {
+	case WW3D_FORMAT_R5G6B5:
+	case WW3D_FORMAT_X1R5G5B5:
+	case WW3D_FORMAT_R8G8B8:
+	case WW3D_FORMAT_R3G3B2:
+		return WW3D_FORMAT_X8R8G8B8;
+	case WW3D_FORMAT_A1R5G5B5:
+	case WW3D_FORMAT_A4R4G4B4:
+	case WW3D_FORMAT_A8R3G3B2:
+	case WW3D_FORMAT_X4R4G4B4:
+	case WW3D_FORMAT_A8P8:
+	case WW3D_FORMAT_P8:
+	case WW3D_FORMAT_U8V8:
+	case WW3D_FORMAT_L6V5U5:
+	case WW3D_FORMAT_X8L8V8U8:
+		return WW3D_FORMAT_A8R8G8B8;
+	default:
+		break;
+	}
+#endif
+	return format;
+}
+
 WW3DFormat Get_Valid_Texture_Format(WW3DFormat format, bool is_compression_allowed)
 {
 	int w,h,bits;
 	bool windowed;
+	format = Promote_Unsupported_Texture_Format(format);
 	const DX8Caps* current_caps = DX8Wrapper::Get_Current_Caps();
 	const bool has_caps = (current_caps != nullptr);
 
@@ -345,6 +372,9 @@ WW3DFormat Get_Valid_Texture_Format(WW3DFormat format, bool is_compression_allow
 	WW3D::Get_Device_Resolution(w,h,bits,windowed);
 	if (WW3D::Get_Texture_Bitdepth()==16) bits=16;
 
+	// GeneralsX @bugfix Cursor 26/11/2026 macOS stays on 32-bit textures. A 16-bit
+	// display mode must not pull A8R8G8B8 back down to A4R4G4B4.
+#if !defined(__APPLE__)
 	// if the device bitdepth is 16, don't allow 32 bit textures
 	if (bits<=16) {
 		switch (format) {
@@ -363,6 +393,10 @@ WW3DFormat Get_Valid_Texture_Format(WW3DFormat format, bool is_compression_allow
 		}
 
 	}
+#endif
+#if defined(__APPLE__)
+	(void)bits;
+#endif
 
 	// GeneralsX @bugfix fbraz 04/05/2026 Headless replay may request texture format conversion before DX8 caps are available.
 	if (!has_caps)
@@ -379,18 +413,24 @@ WW3DFormat Get_Valid_Texture_Format(WW3DFormat format, bool is_compression_allow
 	if (!current_caps->Support_Texture_Format(format)) {
 		format=WW3D_FORMAT_A8R8G8B8;
 		if (!current_caps->Support_Texture_Format(format)) {
+#if !defined(__APPLE__)
 			format=WW3D_FORMAT_A4R4G4B4;
 			if (!current_caps->Support_Texture_Format(format)) {
+#endif
 				// If still no luck, try non-alpha formats
 
 				format=WW3D_FORMAT_X8R8G8B8;
 				if (!current_caps->Support_Texture_Format(format)) {
+#if !defined(__APPLE__)
 					format=WW3D_FORMAT_R5G6B5;
 					if (!current_caps->Support_Texture_Format(format)) {
 						WWASSERT_PRINT(0,("No valid texture format found"));
 					}
+#endif
 				}
+#if !defined(__APPLE__)
 			}
+#endif
 		}
 	}
 

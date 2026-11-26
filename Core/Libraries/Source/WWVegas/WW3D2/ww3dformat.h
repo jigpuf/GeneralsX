@@ -183,6 +183,9 @@ void Get_WW3D_Format(WW3DFormat& src_format,unsigned& src_bpp,const Targa& targa
 // The parameter has no effect on hardware that doesn't support compression.
 WW3DFormat Get_Valid_Texture_Format(WW3DFormat format,bool is_compression_allowed);
 
+// GeneralsX @bugfix Cursor 26/11/2026 DXVK on MoltenVK rejects packed 16-bit and bump formats.
+WW3DFormat Promote_Unsupported_Texture_Format(WW3DFormat format);
+
 unsigned Get_Bytes_Per_Pixel(WW3DFormat format);
 
 unsigned ARGB_Color_To_WW3D_Color(WW3DFormat format, unsigned argb);

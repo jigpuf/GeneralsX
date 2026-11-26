@@ -115,6 +115,9 @@ MetalMapManagerClass::MetalMapManagerClass(INIClass &ini) :
 
 	WW3D::Get_Device_Resolution(w,h,bits,windowed);
 	Use16Bit=(bits<=16);
+#if defined(__APPLE__)
+	Use16Bit = false;
+#endif
 
 	WW3DFormat format=(Use16Bit?WW3D_FORMAT_A4R4G4B4:WW3D_FORMAT_A8R8G8B8);
 
@@ -219,8 +222,15 @@ void MetalMapManagerClass::Update_Textures()
 		Vector3 white(1.0f, 1.0f, 1.0f);
 
 		SurfaceClass * metal_map_surface = Textures[i]->Get_Surface_Level(0);
-		int pitch;
+		if (metal_map_surface == nullptr) {
+			continue;
+		}
+		int pitch = 0;
 		unsigned char *map=(unsigned char *) metal_map_surface->Lock(&pitch);
+		if (map == nullptr) {
+			REF_PTR_RELEASE(metal_map_surface);
+			continue;
+		}
 		int idx=0;
 		for (int y = 0; y < METALMAP_SIZE; y++) {
 			for (int x = 0; x < METALMAP_SIZE; x++) {

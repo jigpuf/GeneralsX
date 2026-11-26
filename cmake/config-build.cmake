@@ -184,6 +184,11 @@ if(RTS_BUILD_OPTION_DEEP_CRC)
     message(STATUS "Deep CRC logging on sync mismatch enabled")
 endif()
 
+# GeneralsX @feature Cursor 25/11/2026 Optional app version shown in the macOS window title.
+if(GENERALSX_APP_VERSION)
+    target_compile_definitions(core_config INTERFACE GENERALSX_APP_VERSION="${GENERALSX_APP_VERSION}")
+endif()
+
 # macOS MoltenVK detection (Phase 5)
 # GeneralsX @build BenderAI 24/02/2026 - Phase 5 macOS port
 if(APPLE AND SAGE_USE_MOLTENVK)

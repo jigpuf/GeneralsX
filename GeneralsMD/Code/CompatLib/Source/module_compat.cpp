@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 #include <dlfcn.h>
+#include <stdio.h>
 #include <string.h>
 
 // GeneralsX @feature BenderAI 24/02/2026 Phase 5 macOS executable path detection
@@ -46,6 +47,25 @@ HMODULE LoadLibrary(const char* lpFileName)
     }
   }
   
+#ifdef __APPLE__
+  // GeneralsX @bugfix Cursor 25/11/2026 dlopen of a bare dylib name does not search
+  // LC_RPATH. Also look beside the app in Contents/Frameworks.
+  char exePath[1024];
+  uint32_t exeSize = sizeof(exePath);
+  if (_NSGetExecutablePath(exePath, &exeSize) == 0) {
+    char *slash = strrchr(exePath, '/');
+    if (slash) {
+      *slash = '\0';
+      char frameworkPath[1200];
+      snprintf(frameworkPath, sizeof(frameworkPath), "%s/../Frameworks/%s", exePath, lpFileName);
+      void *bundled = dlopen(frameworkPath, RTLD_LAZY);
+      if (bundled) {
+        return bundled;
+      }
+    }
+  }
+#endif
+
   return dlopen(lpFileName, RTLD_LAZY);
 }
 

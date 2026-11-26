@@ -12,6 +12,7 @@ applyTo: 'cmake/**,CMakeLists.txt,CMakePresets.json'
 - **`linux64-deploy`** — GCC/Clang x86_64, Release — **PRIMARY LINUX**
 - **`linux64-testing`** — Linux debug variant
 - **`macos-vulkan`** — macOS ARM64, RelWithDebInfo — **PRIMARY MACOS**
+- **`macos-vulkan-x64`** — macOS Intel x86_64, Release, deployment target 12.0 (Monterey)
 - **`webgpu`** — Emscripten 32-bit WebAssembly + WebGPU (`z_generals` / `GeneralsXZH`, exception to DXVK — uses `WebGPUDevice` + `web/` frontend)
 - **`mingw-w64-i686`** — exploratory MinGW-w64 cross-compile for Windows
 - **`windows64-deploy`** — planned MinGW-w64 x86_64 (issue #29, not active)

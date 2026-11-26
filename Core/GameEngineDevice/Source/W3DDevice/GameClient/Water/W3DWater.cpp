@@ -33,6 +33,7 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 
 #include "W3DDevice/GameClient/W3DWater.h"
+#include <cstdio>
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
@@ -451,6 +452,53 @@ RenderObjClass *	 WaterRenderObjClass::Clone() const
 /** Copies raw bits from pBumpSrc (a regular grayscale texture) into a D3D
 	*   bump-map format. */
 //-------------------------------------------------------------------------------------------------
+// GeneralsX @bugfix Cursor 26/11/2026 A4R4G4B4 1x1 white water texture can fail on DXVK/MoltenVK.
+static bool paintWaterWhiteTexel(TextureClass *texture)
+{
+	if (texture == nullptr) {
+		fprintf(stderr, "[GeneralsX] water white texture object is null\n");
+		fflush(stderr);
+		return false;
+	}
+	SurfaceClass *surface = texture->Get_Surface_Level();
+	if (surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] water white texture has no surface; water fill skipped\n");
+		fflush(stderr);
+		return false;
+	}
+	int pitch = 0;
+	void *bits = surface->Lock(&pitch);
+	if (bits == nullptr) {
+		fprintf(stderr, "[GeneralsX] water white texture lock returned null; water fill skipped\n");
+		fflush(stderr);
+		REF_PTR_RELEASE(surface);
+		return false;
+	}
+	const unsigned int bytesPerPixel = surface->Get_Bytes_Per_Pixel();
+	surface->Draw_Pixel(0, 0, 0xffffffff, bytesPerPixel, bits, pitch);
+	surface->Unlock();
+	REF_PTR_RELEASE(surface);
+	return true;
+}
+
+static TextureClass *createWaterWhiteTexture()
+{
+	const WW3DFormat formats[] = { WW3D_FORMAT_A4R4G4B4, WW3D_FORMAT_A8R8G8B8, WW3D_FORMAT_X8R8G8B8 };
+	const char *names[] = { "A4R4G4B4", "A8R8G8B8", "X8R8G8B8" };
+	for (int index = 0; index < 3; ++index) {
+		TextureClass *texture = MSGNEW("TextureClass") TextureClass(1, 1, formats[index], MIP_LEVELS_1);
+		if (paintWaterWhiteTexel(texture)) {
+			fprintf(stderr, "[GeneralsX] water white texture created with format %s\n", names[index]);
+			fflush(stderr);
+			return texture;
+		}
+		fprintf(stderr, "[GeneralsX] water white texture format %s failed\n", names[index]);
+		fflush(stderr);
+		REF_PTR_RELEASE(texture);
+	}
+	return nullptr;
+}
+
 HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass *pBumpSource)
 {
     SurfaceClass::SurfaceDescription    d3dsd;
@@ -993,13 +1041,10 @@ void WaterRenderObjClass::ReAcquireResources()
 		m_waterSparklesTexture->Init();
 	if (m_whiteTexture && !m_whiteTexture->Is_Initialized())
 	{	m_whiteTexture->Init();
-		SurfaceClass *surface=m_whiteTexture->Get_Surface_Level();
-		int pitch;
-		void *pBits = surface->Lock(&pitch);
-		const unsigned int bytesPerPixel = surface->Get_Bytes_Per_Pixel();
-		surface->Draw_Pixel(0, 0, 0xffffffff, bytesPerPixel, pBits, pitch);
-		surface->Unlock();
-		REF_PTR_RELEASE(surface);
+		if (!paintWaterWhiteTexel(m_whiteTexture)) {
+			fprintf(stderr, "[GeneralsX] water white texture could not be refilled after device reset\n");
+			fflush(stderr);
+		}
 	}
 }
 
@@ -1033,6 +1078,17 @@ Int WaterRenderObjClass::init(Real waterLevel, Real dx, Real dy, SceneClass *par
 
 	m_parentScene=parentScene;
 	m_waterType = type;
+
+#if defined(__APPLE__)
+	// GeneralsX @bugfix Cursor 26/11/2026 Reflection and pixel-shader water allocate
+	// bump/render-target formats that DXVK+MoltenVK reject on this GPU class.
+	if (m_waterType == WATER_TYPE_1_FB_REFLECTION || m_waterType == WATER_TYPE_2_PVSHADER) {
+		fprintf(stderr, "[GeneralsX] macOS water type %d needs unsupported reflection/bump formats; using translucent water\n",
+			static_cast<int>(m_waterType));
+		fflush(stderr);
+		m_waterType = WATER_TYPE_0_TRANSLUCENT;
+	}
+#endif
 
 	/// Hack for now
 	//m_waterType = WATER_TYPE_0_TRANSLUCENT;
@@ -1143,14 +1199,11 @@ Int WaterRenderObjClass::init(Real waterLevel, Real dx, Real dy, SceneClass *par
 	m_riverTexture=WW3DAssetManager::Get_Instance()->Get_Texture(TheWaterTransparency->m_standingWaterTexture.str());
 
 	//For some reason setting a null texture does not result in 0xffffffff for pixel shaders so using explicit "white" texture.
-	m_whiteTexture=MSGNEW("TextureClass") TextureClass(1,1,WW3D_FORMAT_A4R4G4B4,MIP_LEVELS_1);
-	SurfaceClass *surface=m_whiteTexture->Get_Surface_Level();
-	int pitch;
-	void *pBits = surface->Lock(&pitch);
-	const unsigned int bytesPerPixel = surface->Get_Bytes_Per_Pixel();
-	surface->Draw_Pixel(0, 0, 0xffffffff, bytesPerPixel, pBits, pitch);
-	surface->Unlock();
-	REF_PTR_RELEASE(surface);
+	m_whiteTexture = createWaterWhiteTexture();
+	if (m_whiteTexture == nullptr) {
+		fprintf(stderr, "[GeneralsX] water continues without the solid white texture\n");
+		fflush(stderr);
+	}
 
 	m_waterNoiseTexture=WW3DAssetManager::Get_Instance()->Get_Texture("Noise0000.tga");
 	m_riverAlphaEdge=WW3DAssetManager::Get_Instance()->Get_Texture("TWAlphaEdge.tga");
@@ -3059,17 +3112,13 @@ void WaterRenderObjClass::setupFlatWaterShader()
 		{
 			//Assume no shroud, so stage 3 will be null texture but using actual white because
 			//pixel shader on GF4 generates random colors with SetTexture(3,nullptr).
-			if (!m_whiteTexture->Is_Initialized())
+			if (m_whiteTexture != nullptr && !m_whiteTexture->Is_Initialized())
 			{	m_whiteTexture->Init();
-				SurfaceClass *surface=m_whiteTexture->Get_Surface_Level();
-				int pitch;
-				void *pBits = surface->Lock(&pitch);
-				const unsigned int bytesPerPixel = surface->Get_Bytes_Per_Pixel();
-				surface->Draw_Pixel(0, 0, 0xffffffff, bytesPerPixel, pBits, pitch);
-				surface->Unlock();
-				REF_PTR_RELEASE(surface);
+				paintWaterWhiteTexel(m_whiteTexture);
 			}
-			DX8Wrapper::_Get_D3D_Device8()->SetTexture(3,m_whiteTexture->Peek_D3D_Texture());
+			if (m_whiteTexture != nullptr) {
+				DX8Wrapper::_Get_D3D_Device8()->SetTexture(3,m_whiteTexture->Peek_D3D_Texture());
+			}
 		}
 	}
 

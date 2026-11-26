@@ -52,7 +52,9 @@ if(SAGE_USE_SDL3)
         set(SDL_VIDEO ON CACHE BOOL "Enable video subsystem" FORCE)
         
         # Platform support
-        if(EMSCRIPTEN)
+        if(EMSCRIPTEN OR APPLE)
+            # GeneralsX @build Cursor 25/11/2026 macOS uses Cocoa. Homebrew X11 is minos 14
+            # and must not be linked into a macOS 12 bundle.
             set(SDL_WAYLAND OFF CACHE BOOL "Disable Wayland" FORCE)
             set(SDL_X11 OFF CACHE BOOL "Disable X11" FORCE)
         else()
@@ -77,6 +79,31 @@ if(SAGE_USE_SDL3)
             # so find_library uses only system paths (/usr/lib, /usr/lib64, multilib dirs).
             find_library(PNG_LIBRARY NAMES png16 png NO_CMAKE_PATH NO_CMAKE_FIND_ROOT_PATH)
             find_path(PNG_PNG_INCLUDE_DIR png.h PATH_SUFFIXES libpng16 NO_CMAKE_PATH NO_CMAKE_FIND_ROOT_PATH)
+            find_package(PNG REQUIRED MODULE)
+        elseif(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "13.0")
+            # GeneralsX @build Cursor 25/11/2026 Homebrew bottles on the macOS 15 Intel runner
+            # advertise minos 15. Use the libpng built into GX_PREFIX with deployment target 12.
+            # The SDL_image release tarball does not contain the vendored zlib/png sources.
+            if(NOT "$ENV{GX_PREFIX}" STREQUAL "")
+                set(GX_PNG_PREFIX "$ENV{GX_PREFIX}")
+            else()
+                set(GX_PNG_PREFIX "$ENV{HOME}/gx-prefix")
+            endif()
+            set(GX_PNG_LIB "${GX_PNG_PREFIX}/lib/libpng16.dylib")
+            if(NOT EXISTS "${GX_PNG_LIB}")
+                set(GX_PNG_LIB "${GX_PNG_PREFIX}/lib/libpng.dylib")
+            endif()
+            if(NOT EXISTS "${GX_PNG_LIB}")
+                message(FATAL_ERROR "macOS 12 libpng not found under ${GX_PNG_PREFIX}. Run scripts/build/macos/build-macos-intel-deps.sh")
+            endif()
+            message(STATUS "SDL3_image: using ${GX_PNG_LIB} (deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET})")
+            set(PNG_SHARED ON CACHE BOOL "Require PNG as shared library" FORCE)
+            set(PNG_INCLUDE_DIR "${GX_PNG_PREFIX}/include" CACHE PATH "PNG include dir" FORCE)
+            set(PNG_PNG_INCLUDE_DIR "${GX_PNG_PREFIX}/include" CACHE PATH "PNG include dir" FORCE)
+            set(PNG_LIBRARY "${GX_PNG_LIB}" CACHE FILEPATH "PNG library" FORCE)
+            set(PNG_LIBRARY_DEBUG "${GX_PNG_LIB}" CACHE FILEPATH "" FORCE)
+            set(PNG_LIBRARY_RELEASE "${GX_PNG_LIB}" CACHE FILEPATH "" FORCE)
+            set(GX_SDLIMAGE_MACOS12 ON)
             find_package(PNG REQUIRED MODULE)
         else()
             # macOS: Force Homebrew's dynamic libpng, bypassing vcpkg's static .a
@@ -126,7 +153,16 @@ if(SAGE_USE_SDL3)
         # Configure SDL3_image build options
         # Note: PNG will use system libpng-dev (installed in Docker, no vcpkg conflicts)
         set(SDLIMAGE_INSTALL OFF CACHE BOOL "Install SDL3_image" FORCE)
-        if(EMSCRIPTEN)
+        if(GX_SDLIMAGE_MACOS12)
+            set(SDLIMAGE_VENDORED OFF CACHE BOOL "Do not vendor image codecs" FORCE)
+            set(SDLIMAGE_DEPS_SHARED ON CACHE BOOL "Link the macOS 12 libpng dylib" FORCE)
+            set(SDLIMAGE_JPG OFF CACHE BOOL "Disable JPG" FORCE)
+            set(SDLIMAGE_PNG ON CACHE BOOL "Enable PNG support (ANI cursor loading)" FORCE)
+            set(SDLIMAGE_TIF OFF CACHE BOOL "Disable TIFF" FORCE)
+            set(SDLIMAGE_WEBP OFF CACHE BOOL "Disable WebP" FORCE)
+            set(SDLIMAGE_AVIF OFF CACHE BOOL "Disable AVIF (optional)" FORCE)
+            set(SDLIMAGE_XCUR OFF CACHE BOOL "Disable X cursor" FORCE)
+        elseif(EMSCRIPTEN)
             set(SDLIMAGE_DEPS_SHARED OFF CACHE BOOL "Use static image dependencies" FORCE)
             set(SDLIMAGE_JPG OFF CACHE BOOL "Disable JPG" FORCE)
             set(SDLIMAGE_PNG OFF CACHE BOOL "Disable PNG" FORCE)
@@ -156,6 +192,25 @@ if(SAGE_USE_SDL3)
             "${sdl3_image_SOURCE_DIR}/include"
         )
         
+        if(APPLE)
+            # GeneralsX @build Cursor 25/11/2026 DXVK's Meson build finds SDL3 through pkg-config.
+            # Point it at this FetchContent build instead of a Homebrew SDL3 with a newer minos.
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/gx-pkgconfig")
+            file(WRITE "${CMAKE_BINARY_DIR}/gx-pkgconfig/sdl3.pc"
+"prefix=${SDL3_BINARY_DIR}
+exec_prefix=\${prefix}
+libdir=\${prefix}
+includedir=${SDL3_SOURCE_DIR}/include
+
+Name: sdl3
+Description: SDL3
+Version: ${SDL3_VERSION}
+Libs: -L\${libdir} -lSDL3
+Cflags: -I\${includedir}
+")
+            set(ENV{PKG_CONFIG_PATH} "${CMAKE_BINARY_DIR}/gx-pkgconfig:$ENV{PKG_CONFIG_PATH}")
+        endif()
+
         message(STATUS "✓ SDL3 (${SDL3_VERSION}) + SDL3_image (${SDL3_IMAGE_VERSION}) configured")
         message(STATUS "  Build approach: Native FetchContent compilation")
         message(STATUS "  PNG support: System libpng-dev (dynamic linking)")

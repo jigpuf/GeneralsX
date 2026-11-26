@@ -21,7 +21,12 @@ if(SAGE_USE_NGMP)
 
     set(_PROTOBUF_BREW_PREFIX "")
     set(_ABSEIL_BREW_PREFIX "")
-    if(APPLE)
+    # GeneralsX @build Cursor 25/11/2026 Intel Monterey builds set this OFF so Homebrew
+    # dylibs (minos of the host OS) are not linked into a macOS 12 bundle.
+    if(NOT DEFINED SAGE_ALLOW_HOST_BREW_DYLIBS)
+        set(SAGE_ALLOW_HOST_BREW_DYLIBS ON)
+    endif()
+    if(APPLE AND SAGE_ALLOW_HOST_BREW_DYLIBS)
         if(EXISTS "/opt/homebrew/opt/protobuf")
             set(_PROTOBUF_BREW_PREFIX "/opt/homebrew/opt/protobuf")
         elseif(EXISTS "/opt/homebrew/opt/protobuf@29")

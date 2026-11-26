@@ -265,15 +265,24 @@ bool TextureAtlasClass::Copy_To_Cell(const TextureClass& source, const TextureCl
 		// as they did. If the source has fewer levels than the page, scale down this cell's level above instead.
 		RefCountPtr<SurfaceClass> destinationSurface;
 		destinationSurface.Assign_No_Add_Ref(page->Get_Surface_Level(level));
+		if (destinationSurface.Peek() == nullptr) {
+			return false;
+		}
 		RefCountPtr<SurfaceClass> sourceSurface;
 		if (level < sourceLevels)
 		{
 			sourceSurface.Assign_No_Add_Ref(source.Get_Surface_Level(level));
+			if (sourceSurface.Peek() == nullptr) {
+				return false;
+			}
 			destinationSurface->Copy(x, y, 0, 0, width, height, sourceSurface.Peek());
 		}
 		else
 		{
 			sourceSurface.Assign_No_Add_Ref(page->Get_Surface_Level(level - 1));
+			if (sourceSurface.Peek() == nullptr) {
+				return false;
+			}
 			destinationSurface->Stretch_Copy(x, y, width, height, x * 2, y * 2, width * 2, height * 2, sourceSurface.Peek());
 		}
 

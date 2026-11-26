@@ -28,9 +28,11 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Lib/BaseType.h"
+#include <cstdio>
 #include "WW3D2/camera.h"
 #include "WWLib/simplevec.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/ww3dformat.h"
 #include "WWMath/vector2i.h"
 #include "Common/MapObject.h"
 #include "Common/PerfTimer.h"
@@ -391,6 +393,34 @@ void W3DShroud::fillShroudData(W3DShroudLevel level)
 #endif
 }
 
+static UnsignedInt expandShroudPixel(UnsignedShort pixel, bool fogOfWar)
+{
+	if (fogOfWar) {
+		const unsigned blue = (pixel & 0xF) * 17u;
+		const unsigned green = ((pixel >> 4) & 0xF) * 17u;
+		const unsigned red = ((pixel >> 8) & 0xF) * 17u;
+		const unsigned alpha = ((pixel >> 12) & 0xF) * 17u;
+		return (alpha << 24) | (red << 16) | (green << 8) | blue;
+	}
+	unsigned blue = pixel & 0x1Fu;
+	unsigned green = (pixel >> 5) & 0x3Fu;
+	unsigned red = (pixel >> 11) & 0x1Fu;
+	blue = (blue << 3) | (blue >> 2);
+	green = (green << 2) | (green >> 4);
+	red = (red << 3) | (red >> 2);
+	return 0xFF000000u | (red << 16) | (green << 8) | blue;
+}
+
+static bool shroudSurfaceIsWide(SurfaceClass *surface)
+{
+	if (surface == nullptr) {
+		return false;
+	}
+	SurfaceClass::SurfaceDescription desc;
+	surface->Get_Description(desc);
+	return desc.Format == WW3D_FORMAT_A8R8G8B8 || desc.Format == WW3D_FORMAT_X8R8G8B8;
+}
+
 void W3DShroud::fillBorderShroudData(W3DShroudLevel level, SurfaceClass* pDestSurface)
 {
 	Int x,y;
@@ -427,16 +457,36 @@ void W3DShroud::fillBorderShroudData(W3DShroudLevel level, SurfaceClass* pDestSu
 		pixel=( ((bluepixel&0xf8) >> 3) | ((greenpixel&0xfc)<<3) | ((redpixel&0xf8)<<8));
 	}
 
+	if (pDestSurface == nullptr) {
+		fprintf(stderr, "[GeneralsX] shroud border surface is null\n");
+		fflush(stderr);
+		return;
+	}
+
 	//Fill destination texture with border color
 	Int dstPitch = 0;
-	UnsignedShort *dstRow = (UnsignedShort *)pDestSurface->Lock(&dstPitch);
+	unsigned char *dstRow = (unsigned char *)pDestSurface->Lock(&dstPitch);
 	if (dstRow != nullptr)
 	{
+		const bool wide = shroudSurfaceIsWide(pDestSurface);
+#if defined(RTS_DEBUG)
+		const bool fogOfWar = TheGlobalData && TheGlobalData->m_fogOfWarOn;
+#else
+		const bool fogOfWar = false;
+#endif
+		const UnsignedInt widePixel = expandShroudPixel(pixel, fogOfWar);
 		for (y=0; y<m_dstTextureHeight; y++)
 		{
-			for (x=0; x<m_dstTextureWidth; x++)
-				dstRow[x]=pixel;
-			dstRow = (UnsignedShort *)((char *)dstRow + dstPitch);
+			if (wide) {
+				UnsignedInt *wideRow = (UnsignedInt *)dstRow;
+				for (x=0; x<m_dstTextureWidth; x++)
+					wideRow[x] = widePixel;
+			} else {
+				UnsignedShort *shortRow = (UnsignedShort *)dstRow;
+				for (x=0; x<m_dstTextureWidth; x++)
+					shortRow[x]=pixel;
+			}
+			dstRow += dstPitch;
 		}
 		pDestSurface->Unlock();
 	}
@@ -594,6 +644,11 @@ void W3DShroud::render(CameraClass *cam)
 	m_drawOriginX = (Real)visStartX * m_cellWidth;
 	m_drawOriginY	= (Real)visStartY * m_cellHeight;
 
+	if (m_pDstTexture == nullptr) {
+		fprintf(stderr, "[GeneralsX] shroud destination texture is null\n");
+		fflush(stderr);
+		return;
+	}
 	if (m_pDstTexture->Get_Filter().Get_Mag_Filter() != m_shroudFilter)
 	{
 		m_pDstTexture->Get_Filter().Set_Mag_Filter(m_shroudFilter);
@@ -601,9 +656,11 @@ void W3DShroud::render(CameraClass *cam)
 	}
 
 	//Update video memory texture with sysmem copy
-	SurfaceClass* pDestSurface;
-	{
-		pDestSurface=m_pDstTexture->Get_Surface_Level(0);
+	SurfaceClass* pDestSurface = m_pDstTexture != nullptr ? m_pDstTexture->Get_Surface_Level(0) : nullptr;
+	if (pDestSurface == nullptr) {
+		fprintf(stderr, "[GeneralsX] shroud destination surface is null\n");
+		fflush(stderr);
+		return;
 	}
 
 	RECT	srcRect;
@@ -637,9 +694,22 @@ void W3DShroud::render(CameraClass *cam)
 		if (dst != nullptr)
 		{
 			const UnsignedShort *src = &m_shroudData[srcRect.left + srcRect.top*m_numCellsX];
+#if defined(RTS_DEBUG)
+			const bool fogOfWar = TheGlobalData && TheGlobalData->m_fogOfWarOn;
+#else
+			const bool fogOfWar = false;
+#endif
+			const bool wide = shroudSurfaceIsWide(pDestSurface);
 			for (Int row = 0; row < copyHeight; ++row)
 			{
-				memcpy(dst, src, copyWidth * sizeof(UnsignedShort));
+				if (wide) {
+					UnsignedInt *wideRow = (UnsignedInt *)dst;
+					for (Int column = 0; column < copyWidth; ++column) {
+						wideRow[column] = expandShroudPixel(src[column], fogOfWar);
+					}
+				} else {
+					memcpy(dst, src, copyWidth * sizeof(UnsignedShort));
+				}
 				dst += dstPitch;
 				src += m_numCellsX;
 			}

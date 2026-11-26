@@ -196,7 +196,7 @@ Bool W3DMouse::loadD3DCursorTextures(MouseCursor cursor)
 		//single animation frame without trailing numbers
 		snprintf(FrameName, ARRAY_SIZE(FrameName), "%s.tga", baseName);
 		cursorTextures[cursor][0]=	am->Get_Texture(FrameName);
-		m_currentD3DSurface[0]=cursorTextures[cursor][0]->Get_Surface_Level();
+		m_currentD3DSurface[0] = cursorTextures[cursor][0] != nullptr ? cursorTextures[cursor][0]->Get_Surface_Level() : nullptr;
 		m_currentFrames = 1;
 	}
 	else

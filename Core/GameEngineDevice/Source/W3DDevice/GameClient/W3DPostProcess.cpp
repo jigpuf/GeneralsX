@@ -29,6 +29,7 @@
 #include "WW3D2/ww3d.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <stdio.h>
 
 W3DPostProcess *TheW3DPostProcess = nullptr;
@@ -220,7 +221,13 @@ bool W3DPostProcess::reacquireResources()
 			m_sceneWidth, m_sceneHeight, hr);
 		return false;
 	}
-	m_sceneTexture->GetSurfaceLevel(0, &m_sceneSurface);
+	hr = m_sceneTexture->GetSurfaceLevel(0, &m_sceneSurface);
+	if (FAILED(hr) || m_sceneSurface == nullptr) {
+		fprintf(stderr, "[POST_PROCESS] scene GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(hr));
+		fflush(stderr);
+		releaseResources();
+		return false;
+	}
 
 	// 2. Dedicated non-MSAA depth-stencil buffer matching scene resolution
 	D3DFORMAT depthFormat = D3DFMT_D24S8;
@@ -257,7 +264,13 @@ bool W3DPostProcess::reacquireResources()
 			releaseResources();
 			return false;
 		}
-		m_bloomTexture[i]->GetSurfaceLevel(0, &m_bloomSurface[i]);
+		hr = m_bloomTexture[i]->GetSurfaceLevel(0, &m_bloomSurface[i]);
+		if (FAILED(hr) || m_bloomSurface[i] == nullptr) {
+			fprintf(stderr, "[POST_PROCESS] bloom GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(hr));
+			fflush(stderr);
+			releaseResources();
+			return false;
+		}
 	}
 
 	// 4. Composite full-screen texture for chaining
@@ -270,7 +283,13 @@ bool W3DPostProcess::reacquireResources()
 		releaseResources();
 		return false;
 	}
-	m_compositeTexture->GetSurfaceLevel(0, &m_compositeSurface);
+	hr = m_compositeTexture->GetSurfaceLevel(0, &m_compositeSurface);
+	if (FAILED(hr) || m_compositeSurface == nullptr) {
+		fprintf(stderr, "[POST_PROCESS] composite GetSurfaceLevel failed hresult=0x%08X\n", static_cast<unsigned>(hr));
+		fflush(stderr);
+		releaseResources();
+		return false;
+	}
 
 	return true;
 }

@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <algorithm>
 #include <random>
-#include <format>
 #include <string>
 
 #ifdef min
@@ -71,7 +70,11 @@ std::string GetClientVersion() {
 }
 
 std::string GetUserAgent() {
-    return std::format("GeneralsX/{} ({})", GetClientVersion(), NGMP_CLIENT_ID);
+    // GeneralsX @bugfix Cursor 25/11/2026 std::format is unavailable when the
+    // deployment target is older than macOS 13.3.
+    char buffer[512];
+    snprintf(buffer, sizeof(buffer), "GeneralsX/%s (%s)", GetClientVersion().c_str(), NGMP_CLIENT_ID);
+    return buffer;
 }
 
 bool IsSSLEnabled() {
@@ -309,16 +312,25 @@ void FetchMOTD() {
 }
 
 std::string GetAPIEndpoint(const char* szEndpoint) {
-    return std::format("{}/env/{}/contract/" NGMP_CONTRACT_VERSION "/{}",
-        GetServerRESTEndpoint(), GetServerEnv(), szEndpoint);
+    // GeneralsX @bugfix Cursor 25/11/2026 Avoid std::format (macOS 13.3+ libc++).
+    char buffer[2048];
+    snprintf(buffer, sizeof(buffer), "%s/env/%s/contract/" NGMP_CONTRACT_VERSION "/%s",
+        GetServerRESTEndpoint().c_str(), GetServerEnv().c_str(), szEndpoint ? szEndpoint : "");
+    return buffer;
 }
 
 std::string GetBrowserLoginURL(const std::string& gamecode) {
-    return std::format("{}/login/?gamecode={}&v={}", GetWebPortalURL(), gamecode, GetClientVersion());
+    char buffer[2048];
+    snprintf(buffer, sizeof(buffer), "%s/login/?gamecode=%s&v=%s",
+        GetWebPortalURL().c_str(), gamecode.c_str(), GetClientVersion().c_str());
+    return buffer;
 }
 
 std::string GetMatchViewURL(uint64_t matchId) {
-    return std::format("{}/viewmatch?match={}", GetWebPortalURL(), matchId);
+    char buffer[2048];
+    snprintf(buffer, sizeof(buffer), "%s/viewmatch?match=%llu",
+        GetWebPortalURL().c_str(), static_cast<unsigned long long>(matchId));
+    return buffer;
 }
 
 // GeneralsX @bugfix fbraz3 03/09/2026 Generate UUIDv4 fallback gamecode using OS entropy with CSPRNG validation
@@ -363,12 +375,15 @@ std::string GenerateGamecode() {
     // Set variant to RFC 4122 (10xx): clk_seq_hi_res [bits 6-7] = 10b
     part2 = (part2 & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
 
-    return std::format("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        static_cast<uint32_t>(part1 >> 32),
-        static_cast<uint16_t>((part1 >> 16) & 0xFFFF),
-        static_cast<uint16_t>(part1 & 0xFFFF),
-        static_cast<uint16_t>(part2 >> 48),
-        static_cast<uint64_t>(part2 & 0xFFFFFFFFFFFFULL));
+    // GeneralsX @bugfix Cursor 25/11/2026 snprintf keeps the UUID text identical on macOS 12.
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%08x-%04x-%04x-%04x-%012llx",
+        static_cast<unsigned int>(part1 >> 32),
+        static_cast<unsigned int>((part1 >> 16) & 0xFFFF),
+        static_cast<unsigned int>(part1 & 0xFFFF),
+        static_cast<unsigned int>(part2 >> 48),
+        static_cast<unsigned long long>(part2 & 0xFFFFFFFFFFFFULL));
+    return buffer;
 }
 
 std::string UnicodeToUTF8(const UnicodeString& ustr) {

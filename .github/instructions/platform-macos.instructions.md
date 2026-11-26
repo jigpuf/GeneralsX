@@ -7,7 +7,8 @@ applyTo: 'scripts/build/macos/**'
 - SDL3 for windowing/input.
 - DXVK + MoltenVK: DX8 → Vulkan → Metal chain.
 - MiniAudio for audio.
-- Target: **ARM64 (Apple Silicon)**, macOS 15.0+.
+- Target: **ARM64 (Apple Silicon)**, macOS 15.0+ (`macos-vulkan`).
+- Intel: **x86_64**, macOS 12.0+ (`macos-vulkan-x64`, workflow `.github/workflows/build-macos-intel.yml` on `macos-15-intel`).
 - Universal binary (arm64 + x86_64) planned.
 
 ## Key Considerations

@@ -627,8 +627,14 @@ void W3DRadar::drawIcons( Int pixelX, Int pixelY, Int width, Int height )
 //-------------------------------------------------------------------------------------------------
 void W3DRadar::updateObjectTexture(TextureClass *texture)
 {
+	if (texture == nullptr) {
+		return;
+	}
 	// reset the overlay texture
 	SurfaceClass *surface = texture->Get_Surface_Level();
+	if (surface == nullptr) {
+		return;
+	}
 	surface->Clear();
 	REF_PTR_RELEASE(surface);
 
@@ -697,6 +703,9 @@ void W3DRadar::renderObjectList( const RadarObject *listHead, TextureClass *text
 
 	// get surface for texture to render into
 	SurfaceClass *surface = texture->Get_Surface_Level();
+	if (surface == nullptr) {
+		return;
+	}
 
 	// loop through all objects and draw
 	ICoord2D radarPoint;
@@ -1388,8 +1397,11 @@ void W3DRadar::setShroudLevel(Int shroudX, Int shroudY, CellShroudStatus setting
 	if (m_shroudSurface == nullptr)
 	{
 		// This is expensive.
-		SurfaceClass* surface = m_shroudTexture->Get_Surface_Level();
+		SurfaceClass* surface = m_shroudTexture != nullptr ? m_shroudTexture->Get_Surface_Level() : nullptr;
 		DEBUG_ASSERTCRASH( surface, ("W3DRadar: Can't get surface for Shroud texture") );
+		if (surface == nullptr) {
+			return;
+		}
 		SurfaceClass::SurfaceDescription surfaceDesc;
 		surface->Get_Description(surfaceDesc);
 		int pitch;
@@ -1431,8 +1443,11 @@ void W3DRadar::setShroudLevel(Int shroudX, Int shroudY, CellShroudStatus setting
 void W3DRadar::beginSetShroudLevel()
 {
 	DEBUG_ASSERTCRASH( m_shroudSurface == nullptr, ("W3DRadar::beginSetShroudLevel: m_shroudSurface is expected null") );
-	m_shroudSurface = m_shroudTexture->Get_Surface_Level();
+	m_shroudSurface = m_shroudTexture != nullptr ? m_shroudTexture->Get_Surface_Level() : nullptr;
 	DEBUG_ASSERTCRASH( m_shroudSurface != nullptr, ("W3DRadar::beginSetShroudLevel: Can't get surface for Shroud texture") );
+	if (m_shroudSurface == nullptr) {
+		return;
+	}
 
 	SurfaceClass::SurfaceDescription surfaceDesc;
 	m_shroudSurface->Get_Description(surfaceDesc);

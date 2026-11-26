@@ -37,6 +37,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "texture.h"
+#include <cstdio>
 
 #include <d3d8.h>
 #include <d3dx8core.h>
@@ -626,18 +627,36 @@ TextureClass::TextureClass
 	default: WWASSERT(0);
 	}
 
-	Poke_Texture
+	IDirect3DTexture8 *created = DX8Wrapper::_Create_DX8_Texture
 	(
-		DX8Wrapper::_Create_DX8_Texture
-		(
-			width,
-			height,
-			format,
-			mip_level_count,
-			d3dpool,
-			rendertarget
-		)
+		width,
+		height,
+		format,
+		mip_level_count,
+		d3dpool,
+		rendertarget
 	);
+	Poke_Texture(created);
+	if (created == nullptr) {
+		fprintf(stderr, "[GeneralsX] TextureClass %ux%u format %d has no D3D texture\n",
+			width, height, static_cast<int>(format));
+		fflush(stderr);
+	} else {
+		IDirect3DSurface8 *created_surface = nullptr;
+		const HRESULT level_result = created->GetSurfaceLevel(0, &created_surface);
+		if (FAILED(level_result) || created_surface == nullptr) {
+			fprintf(stderr, "[GeneralsX] TextureClass GetSurfaceLevel failed hresult=0x%08X format %d\n",
+				static_cast<unsigned>(level_result), static_cast<int>(format));
+			fflush(stderr);
+		} else {
+			D3DSURFACE_DESC created_desc;
+			::ZeroMemory(&created_desc, sizeof(created_desc));
+			if (SUCCEEDED(created_surface->GetDesc(&created_desc))) {
+				TextureFormat = D3DFormat_To_WW3DFormat(created_desc.Format);
+			}
+			created_surface->Release();
+		}
+	}
 
 	if (pool==POOL_DEFAULT)
 	{
@@ -981,12 +1000,22 @@ SurfaceClass *TextureClass::Get_Surface_Level(unsigned int level) const
 {
 	if (!Peek_D3D_Texture())
 	{
+		// GeneralsX @bugfix Cursor 26/11/2026 Texture creation can fail on DXVK/MoltenVK.
+		fprintf(stderr, "[GeneralsX] Get_Surface_Level: D3D texture is null (level %u, format %d)\n",
+			level, static_cast<int>(TextureFormat));
+		fflush(stderr);
 		WWASSERT_PRINT(0, "Get_Surface_Level: D3DTexture is null!");
 		return nullptr;
 	}
 
 	IDirect3DSurface8 *d3d_surface = nullptr;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
+	const HRESULT result = Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface);
+	if (FAILED(result) || d3d_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] GetSurfaceLevel failed hresult=0x%08X level=%u format=%d\n",
+			static_cast<unsigned>(result), level, static_cast<int>(TextureFormat));
+		fflush(stderr);
+		return nullptr;
+	}
 	SurfaceClass *surface = new SurfaceClass(d3d_surface);
 	d3d_surface->Release();
 
@@ -1019,7 +1048,13 @@ IDirect3DSurface8 *TextureClass::Get_D3D_Surface_Level(unsigned int level)
 	}
 
 	IDirect3DSurface8 *d3d_surface = nullptr;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
+	const HRESULT result = Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface);
+	if (FAILED(result) || d3d_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] Get_D3D_Surface_Level failed hresult=0x%08X level=%u\n",
+			static_cast<unsigned>(result), level);
+		fflush(stderr);
+		return nullptr;
+	}
 	return d3d_surface;
 }
 
@@ -1311,7 +1346,13 @@ IDirect3DSurface8* ZTextureClass::Get_D3D_Surface_Level(unsigned int level)
 	}
 
 	IDirect3DSurface8 *d3d_surface = nullptr;
-	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
+	const HRESULT result = Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface);
+	if (FAILED(result) || d3d_surface == nullptr) {
+		fprintf(stderr, "[GeneralsX] Get_D3D_Surface_Level failed hresult=0x%08X level=%u\n",
+			static_cast<unsigned>(result), level);
+		fflush(stderr);
+		return nullptr;
+	}
 	return d3d_surface;
 }
 

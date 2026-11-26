@@ -68,6 +68,32 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
   endif()
   message(STATUS "Building DXVK ${DXVK_VERSION} for macOS/${DXVK_HOST_ARCH} with Meson (${MESON_EXECUTABLE})")
 
+  # GeneralsX @build Cursor 25/11/2026 Apple Silicon keeps -mcpu=apple-m1. Intel uses
+  # a separate Meson native file and an explicit macOS 12 deployment target so the
+  # DXVK dylibs do not inherit the host SDK minimum (macOS 15 on GitHub runners).
+  if(DXVK_HOST_ARCH STREQUAL "arm64" OR DXVK_HOST_ARCH STREQUAL "aarch64")
+    set(DXVK_MESON_NATIVE_FILE "${CMAKE_SOURCE_DIR}/cmake/meson-arm64-native.ini")
+    set(DXVK_CFLAGS "-arch ${DXVK_HOST_ARCH} -mcpu=apple-m1")
+    set(DXVK_LDFLAGS "-arch ${DXVK_HOST_ARCH}")
+  else()
+    set(DXVK_MESON_NATIVE_FILE "${CMAKE_SOURCE_DIR}/cmake/meson-x64-native.ini")
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+      set(DXVK_MIN_OS "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+      set(DXVK_MIN_OS "12.0")
+    endif()
+    set(DXVK_CFLAGS "-arch ${DXVK_HOST_ARCH} -mmacosx-version-min=${DXVK_MIN_OS}")
+    set(DXVK_LDFLAGS "-arch ${DXVK_HOST_ARCH} -mmacosx-version-min=${DXVK_MIN_OS}")
+  endif()
+  set(DXVK_PKG_CONFIG_PATH "${CMAKE_BINARY_DIR}/gx-pkgconfig")
+  if(NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
+    set(DXVK_PKG_CONFIG_PATH "${CMAKE_BINARY_DIR}/gx-pkgconfig:$ENV{PKG_CONFIG_PATH}")
+  endif()
+  set(DXVK_DEPLOYMENT_TARGET "$ENV{MACOSX_DEPLOYMENT_TARGET}")
+  if(CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(DXVK_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  endif()
+
   include(ExternalProject)
   # GeneralsX @build BenderAI 13/03/2026 Add explicit source mode to keep remote branch updates deterministic by default.
   # GeneralsX @build fbraz 25/09/2026 Default local DXVK fork to workspace generalsx-dxvk repository.
@@ -147,7 +173,7 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
       DOWNLOAD_COMMAND  ""
       UPDATE_COMMAND    ""
       PATCH_COMMAND     ""
-      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=clang CXX=clang++ "CFLAGS=-arch ${DXVK_HOST_ARCH} -mcpu=apple-m1" "CXXFLAGS=-arch ${DXVK_HOST_ARCH} -mcpu=apple-m1" "LDFLAGS=-arch ${DXVK_HOST_ARCH}" ${VULKAN_SDK_ENV_VAR} ${MESON_EXECUTABLE} setup ${DXVK_BUILD_DIR} ${DXVK_SOURCE_DIR} --native-file ${CMAKE_SOURCE_DIR}/cmake/meson-arm64-native.ini -Ddxvk_native_wsi=sdl3 --buildtype=release --reconfigure
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=clang CXX=clang++ "CFLAGS=${DXVK_CFLAGS}" "CXXFLAGS=${DXVK_CFLAGS}" "LDFLAGS=${DXVK_LDFLAGS}" "PKG_CONFIG_PATH=${DXVK_PKG_CONFIG_PATH}" "MACOSX_DEPLOYMENT_TARGET=${DXVK_DEPLOYMENT_TARGET}" ${VULKAN_SDK_ENV_VAR} ${MESON_EXECUTABLE} setup ${DXVK_BUILD_DIR} ${DXVK_SOURCE_DIR} --native-file ${DXVK_MESON_NATIVE_FILE} -Ddxvk_native_wsi=sdl3 --buildtype=release --reconfigure
       BUILD_COMMAND     ${NINJA_EXECUTABLE} -C ${DXVK_BUILD_DIR} src/d3d9/libdxvk_d3d9.0.dylib src/d3d8/libdxvk_d3d8.0.dylib
       INSTALL_COMMAND   ""
       UPDATE_DISCONNECTED TRUE
@@ -166,7 +192,8 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
       GIT_SHALLOW       FALSE
       SOURCE_DIR        ${DXVK_SOURCE_DIR}
       BINARY_DIR        ${DXVK_BUILD_DIR}
-      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=clang CXX=clang++ "CFLAGS=-arch ${DXVK_HOST_ARCH} -mcpu=apple-m1" "CXXFLAGS=-arch ${DXVK_HOST_ARCH} -mcpu=apple-m1" "LDFLAGS=-arch ${DXVK_HOST_ARCH}" ${VULKAN_SDK_ENV_VAR} ${MESON_EXECUTABLE} setup ${DXVK_BUILD_DIR} ${DXVK_SOURCE_DIR} --native-file ${CMAKE_SOURCE_DIR}/cmake/meson-arm64-native.ini -Ddxvk_native_wsi=sdl3 --buildtype=release --reconfigure
+      PATCH_COMMAND     ${CMAKE_COMMAND} -DSOURCE_DIR=${DXVK_SOURCE_DIR} -P ${CMAKE_SOURCE_DIR}/cmake/patch-dxvk-monterey-stride.cmake
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=clang CXX=clang++ "CFLAGS=${DXVK_CFLAGS}" "CXXFLAGS=${DXVK_CFLAGS}" "LDFLAGS=${DXVK_LDFLAGS}" "PKG_CONFIG_PATH=${DXVK_PKG_CONFIG_PATH}" "MACOSX_DEPLOYMENT_TARGET=${DXVK_DEPLOYMENT_TARGET}" ${VULKAN_SDK_ENV_VAR} ${MESON_EXECUTABLE} setup ${DXVK_BUILD_DIR} ${DXVK_SOURCE_DIR} --native-file ${DXVK_MESON_NATIVE_FILE} -Ddxvk_native_wsi=sdl3 --buildtype=release --reconfigure
       BUILD_COMMAND     ${NINJA_EXECUTABLE} -C ${DXVK_BUILD_DIR} src/d3d9/libdxvk_d3d9.0.dylib src/d3d8/libdxvk_d3d8.0.dylib
       INSTALL_COMMAND   ""
       UPDATE_DISCONNECTED FALSE
